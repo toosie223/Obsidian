@@ -199,21 +199,21 @@ local Library = {
 
     IsLightTheme = false,
     Scheme = {
-    -- Minimal: soft monochrome, single sky accent
-    BackgroundColor = Color3.fromRGB(10, 11, 13),
-    MainColor = Color3.fromRGB(19, 21, 24),
-    AccentColor = Color3.fromRGB(126, 198, 255),
-    AccentColor2 = Color3.fromRGB(126, 198, 255),
-    OutlineColor = Color3.fromRGB(36, 39, 44),
-    FontColor = Color3.fromRGB(230, 233, 238),
+    -- Phantom: deep-space glass, violet→pink gradient accents
+    BackgroundColor = Color3.fromRGB(9, 9, 15),
+    MainColor = Color3.fromRGB(19, 19, 29),
+    AccentColor = Color3.fromRGB(139, 92, 246),
+    AccentColor2 = Color3.fromRGB(236, 72, 153),
+    OutlineColor = Color3.fromRGB(36, 36, 50),
+    FontColor = Color3.fromRGB(238, 235, 248),
     Font = Font.fromEnum(Enum.Font.GothamBold),
 
-    RedColor = Color3.fromRGB(255, 90, 110),
+    RedColor = Color3.fromRGB(244, 63, 94),
     DarkColor = Color3.fromRGB(0, 0, 0),
     WhiteColor = Color3.fromRGB(255, 255, 255),
 
-    SidebarColor = Color3.fromRGB(10, 11, 13),
-    AccentGlow = Color3.fromRGB(180, 210, 230),
+    SidebarColor = Color3.fromRGB(10, 10, 17),
+    AccentGlow = Color3.fromRGB(222, 192, 255),
 },
 
     Registry = {},
@@ -296,7 +296,7 @@ local Templates = {
         Resizable = true,
         SearchbarSize = UDim2.fromScale(1, 1),
         GlobalSearch = false,
-        CornerRadius = 10,
+        CornerRadius = 14,
         NotifySide = "Right",
         ShowCustomCursor = true,
         Font = Enum.Font.GothamBold,
@@ -3352,6 +3352,9 @@ do
                     TextTransparency = 0,
                 })
                 Button.Tween:Play()
+                TweenService:Create(Button.Stroke, Library.TweenInfo, {
+                    Color = Library.Scheme.AccentColor,
+                }):Play()
             end)
             Button.Base.MouseLeave:Connect(function()
                 if Button.Disabled then
@@ -3362,6 +3365,9 @@ do
                     TextTransparency = 0.4,
                 })
                 Button.Tween:Play()
+                TweenService:Create(Button.Stroke, Library.TweenInfo, {
+                    Color = Library.Scheme.OutlineColor,
+                }):Play()
             end)
 
             Button.Base.MouseButton1Click:Connect(function()
@@ -3823,6 +3829,23 @@ do
             Parent = Switch,
         })
 
+        local SwitchGlow = New("UIStroke", {
+            ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+            Color = Library.Scheme.AccentColor,
+            Thickness = 4,
+            Transparency = 1,
+            Parent = Switch,
+        })
+
+        local SwitchGradient = New("UIGradient", {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Library.Scheme.AccentColor),
+                ColorSequenceKeypoint.new(1, Library.Scheme.AccentColor2),
+            }),
+            Transparency = NumberSequence.new(1),
+            Parent = Switch,
+        })
+
         local Ball = New("Frame", {
             BackgroundColor3 = "FontColor",
             Size = UDim2.fromScale(1, 1),
@@ -3848,11 +3871,22 @@ do
             Switch.BackgroundTransparency = Toggle.Disabled and 0.75 or 0
             SwitchStroke.Transparency = Toggle.Disabled and 0.75 or 0
 
-            Switch.BackgroundColor3 = Toggle.Value and Library.Scheme.AccentColor or Library.Scheme.MainColor
-            SwitchStroke.Color = Toggle.Value and Library.Scheme.AccentColor or Library.Scheme.OutlineColor
+            Switch.BackgroundColor3 = Toggle.Value and Color3.fromRGB(255, 255, 255) or Library.Scheme.MainColor
+            SwitchStroke.Color = Toggle.Value and Library.Scheme.AccentColor2 or Library.Scheme.OutlineColor
 
-            Library.Registry[Switch].BackgroundColor3 = Toggle.Value and "AccentColor" or "MainColor"
-            Library.Registry[SwitchStroke].Color = Toggle.Value and "AccentColor" or "OutlineColor"
+            Library.Registry[Switch].BackgroundColor3 = Toggle.Value and function()
+                return Color3.fromRGB(255, 255, 255)
+            end or "MainColor"
+            Library.Registry[SwitchStroke].Color = Toggle.Value and function()
+                return Library.Scheme.AccentColor2
+            end or "OutlineColor"
+
+            TweenService:Create(SwitchGradient, Library.TweenInfo, {
+                Transparency = NumberSequence.new(Toggle.Value and 0 or 1),
+            }):Play()
+            TweenService:Create(SwitchGlow, Library.TweenInfo, {
+                Transparency = Toggle.Value and 0.5 or 1,
+            }):Play()
 
             if Toggle.Disabled then
                 Label.TextTransparency = 0.8
@@ -4212,6 +4246,13 @@ do
             BackgroundColor3 = "AccentColor",
             Size = UDim2.fromScale(0.5, 1),
             Parent = Bar,
+        })
+        New("UIGradient", {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Library.Scheme.AccentColor),
+                ColorSequenceKeypoint.new(1, Library.Scheme.AccentColor2),
+            }),
+            Parent = Fill,
         })
 
         function Slider:UpdateColors()
@@ -6051,6 +6092,7 @@ function Library:CreateWindow(WindowInfo)
     local InitialLeftWidth = math.ceil(WindowInfo.Size.X.Offset * 0.3)
     local IsCompact = WindowInfo.SidebarCompacted
     local LastExpandedWidth = InitialLeftWidth
+    local Backdrop = nil
 
     do
         Library.KeybindFrame, Library.KeybindContainer = Library:AddDraggableMenu("Keybinds")
@@ -6058,12 +6100,29 @@ function Library:CreateWindow(WindowInfo)
         Library.KeybindFrame.Position = UDim2.new(0, 6, 0.5, 0)
         Library.KeybindFrame.Visible = false
 
-        --// Minimal window frame
-        local ONYX_BG  = Color3.fromRGB(10, 11, 13)
-        local ONYX_TOP = Color3.fromRGB(13, 15, 17)
-        local ONYX_ACC = Color3.fromRGB(126, 198, 255)
-        local ONYX_ACC2 = Color3.fromRGB(126, 198, 255)
-        local ONYX_OUT = Color3.fromRGB(36, 39, 44)
+        --// Phantom window frame
+        local ONYX_BG  = Color3.fromRGB(12, 12, 20)
+        local ONYX_TOP = Color3.fromRGB(19, 18, 32)
+        local ONYX_ACC = Color3.fromRGB(139, 92, 246)
+        local ONYX_ACC2 = Color3.fromRGB(236, 72, 153)
+        local ONYX_OUT = Color3.fromRGB(38, 38, 54)
+
+        -- Dimmed screen backdrop
+        Backdrop = New("Frame", {
+            BackgroundColor3 = Color3.fromRGB(4, 4, 8),
+            BackgroundTransparency = 1,
+            Size = UDim2.fromScale(1, 1),
+            Visible = false,
+            Parent = ScreenGui,
+        })
+        New("UIGradient", {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(22, 14, 44)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(5, 5, 12)),
+            }),
+            Rotation = 90,
+            Parent = Backdrop,
+        })
 
         MainFrame = New("TextButton", {
             BackgroundColor3 = ONYX_BG,
@@ -6079,19 +6138,48 @@ function Library:CreateWindow(WindowInfo)
             Parent = MainFrame,
         })
         table.insert(Library.Scales, New("UIScale", { Parent = MainFrame }))
-        -- Hairline border
+        -- Deep-space background wash
+        New("UIGradient", {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(26, 20, 48)),
+                ColorSequenceKeypoint.new(0.5, Color3.fromRGB(13, 13, 22)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(10, 10, 17)),
+            }),
+            Rotation = 90,
+            Parent = MainFrame,
+        })
+        -- Outer glow + hairline border
         New("UIStroke", {
             ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-            Color = ONYX_OUT,
+            Color = Color3.fromRGB(139, 92, 246),
+            Thickness = 2,
+            Transparency = 0.75,
+            Parent = MainFrame,
+        })
+        New("UIStroke", {
+            ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+            Color = Color3.fromRGB(255, 255, 255),
             Thickness = 1,
-            Transparency = 0.6,
+            Transparency = 0.93,
             Parent = MainFrame,
         })
 
-        -- Separator under top bar
-        Library:MakeLine(MainFrame, {
-            Position = UDim2.fromOffset(0, 50),
-            Size = UDim2.new(1, 0, 0, 1),
+        -- Accent gradient separator under top bar
+        local AccentSeparator = New("Frame", {
+            BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+            Position = UDim2.fromOffset(0, 51),
+            Size = UDim2.new(1, 0, 0, 2),
+            ZIndex = 4,
+            Parent = MainFrame,
+        })
+        New("UIGradient", {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, ONYX_ACC),
+                ColorSequenceKeypoint.new(0.5, Color3.fromRGB(190, 96, 210)),
+                ColorSequenceKeypoint.new(1, ONYX_ACC2),
+            }),
+            Rotation = 90,
+            Parent = AccentSeparator,
         })
 
         -- Sidebar divider
@@ -6168,6 +6256,13 @@ function Library:CreateWindow(WindowInfo)
             Parent = TitleHolder,
         })
         New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = BrandPill })
+        New("UIGradient", {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, ONYX_ACC),
+                ColorSequenceKeypoint.new(1, ONYX_ACC2),
+            }),
+            Parent = BrandPill,
+        })
         Library:AddToRegistry(BrandPill, { BackgroundColor3 = "AccentColor" })
 
         if WindowInfo.Icon then
@@ -6554,6 +6649,7 @@ function Library:CreateWindow(WindowInfo)
         Icon = Library:GetCustomIcon(Icon)
         local TabPill = nil
         local TabAccentBar = nil
+        local TabGlow = nil
         do
             -- OnyxLib V2 pill nav button
             TabButton = New("TextButton", {
@@ -6569,7 +6665,7 @@ function Library:CreateWindow(WindowInfo)
                 Parent = TabButton,
             })
 
-            -- Pill highlight — soft surface, invisible by default
+            -- Pill highlight — gradient fill, invisible by default
             TabPill = New("Frame", {
                 AnchorPoint = Vector2.new(0.5, 0.5),
                 BackgroundColor3 = Color3.fromRGB(255, 255, 255),
@@ -6583,17 +6679,38 @@ function Library:CreateWindow(WindowInfo)
                 CornerRadius = UDim.new(0, 8),
                 Parent = TabPill,
             })
+            New("UIGradient", {
+                Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0, Library.Scheme.AccentColor),
+                    ColorSequenceKeypoint.new(1, Library.Scheme.AccentColor2),
+                }),
+                Parent = TabPill,
+            })
+            TabGlow = New("UIStroke", {
+                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                Color = Library.Scheme.AccentColor2,
+                Thickness = 1.5,
+                Transparency = 1,
+                Parent = TabPill,
+            })
             Library:AddToRegistry(TabPill, { BackgroundColor3 = "MainColor" })
 
-            -- Left accent bar — thin, minimal
+            -- Left accent bar — gradient, thin
             TabAccentBar = New("Frame", {
                 AnchorPoint = Vector2.new(0, 0.5),
-                BackgroundColor3 = Library.Scheme.AccentColor,
+                BackgroundColor3 = Color3.fromRGB(255, 255, 255),
                 BackgroundTransparency = 1,
                 Position = UDim2.new(0, 0, 0.5, 0),
-                Size = UDim2.new(0, 3, 0, 16),
+                Size = UDim2.new(0, 3, 0, 18),
                 ZIndex = 3,
                 Parent = TabButton,
+            })
+            New("UIGradient", {
+                Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0, Library.Scheme.AccentColor),
+                    ColorSequenceKeypoint.new(1, Library.Scheme.AccentColor2),
+                }),
+                Parent = TabAccentBar,
             })
             New("UICorner", {
                 CornerRadius = UDim.new(1, 0),
@@ -6982,10 +7099,30 @@ function Library:CreateWindow(WindowInfo)
                     Parent = GroupboxHolder,
                 })
                 Library:AddOutline(GroupboxHolder)
+                New("UIGradient", {
+                    Color = ColorSequence.new({
+                        ColorSequenceKeypoint.new(0, Color3.fromRGB(31, 25, 54)),
+                        ColorSequenceKeypoint.new(0.1, Color3.fromRGB(17, 17, 28)),
+                        ColorSequenceKeypoint.new(1, Color3.fromRGB(12, 12, 20)),
+                    }),
+                    Rotation = 90,
+                    Parent = GroupboxHolder,
+                })
 
-                Library:MakeLine(GroupboxHolder, {
+                local HeaderDivider = New("Frame", {
+                    BackgroundColor3 = Color3.fromRGB(255, 255, 255),
                     Position = UDim2.fromOffset(0, 34),
                     Size = UDim2.new(1, 0, 0, 1),
+                    Parent = GroupboxHolder,
+                })
+                New("UIGradient", {
+                    Color = ColorSequence.new({
+                        ColorSequenceKeypoint.new(0, Library.Scheme.AccentColor),
+                        ColorSequenceKeypoint.new(1, Library.Scheme.AccentColor2),
+                    }),
+                    Rotation = 90,
+                    Transparency = NumberSequence.new(0.65),
+                    Parent = HeaderDivider,
                 })
 
                 local BoxIcon = Library:GetCustomIcon(Info.IconName)
@@ -7006,6 +7143,7 @@ function Library:CreateWindow(WindowInfo)
                     Position = UDim2.fromOffset(BoxIcon and 24 or 0, 0),
                     Size = UDim2.new(1, 0, 0, 34),
                     Text = Info.Name,
+                    TextColor3 = Library.Scheme.AccentColor,
                     TextSize = 15,
                     TextXAlignment = Enum.TextXAlignment.Left,
                     Parent = GroupboxHolder,
@@ -7278,7 +7416,10 @@ function Library:CreateWindow(WindowInfo)
                 TextTransparency = Hovering and 0.15 or 0.5,
             }):Play()
             TweenService:Create(TabPill, T, {
-                BackgroundTransparency = Hovering and 0.92 or 1,
+                BackgroundTransparency = Hovering and 0.8 or 1,
+            }):Play()
+            TweenService:Create(TabGlow, T, {
+                Transparency = Hovering and 0.8 or 1,
             }):Play()
             if TabIcon then
                 TweenService:Create(TabIcon, T, {
@@ -7292,9 +7433,12 @@ function Library:CreateWindow(WindowInfo)
 
             local T = TweenInfo.new(0.22, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
 
-            -- Pill: soft surface highlight
+            -- Pill: gradient fill for the active tab
             TweenService:Create(TabPill, T, {
-                BackgroundTransparency = 0.9,
+                BackgroundTransparency = 0.15,
+            }):Play()
+            TweenService:Create(TabGlow, T, {
+                Transparency = 0.5,
             }):Play()
             -- Accent bar: visible
             TweenService:Create(TabAccentBar, T, {
@@ -7322,6 +7466,7 @@ function Library:CreateWindow(WindowInfo)
             local T = TweenInfo.new(0.18, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
 
             TweenService:Create(TabPill, T, { BackgroundTransparency = 1 }):Play()
+            TweenService:Create(TabGlow, T, { Transparency = 1 }):Play()
             TweenService:Create(TabAccentBar, T, { BackgroundTransparency = 1 }):Play()
             TweenService:Create(TabLabel, T, {
                 TextTransparency = 0.5,
@@ -7385,6 +7530,17 @@ function Library:CreateWindow(WindowInfo)
                 Size = UDim2.new(1, 0, 0, 40),
                 Text = "",
                 Parent = Tabs,
+            })
+            New("UICorner", {
+                CornerRadius = UDim.new(0, 8),
+                Parent = TabButton,
+            })
+            New("UIGradient", {
+                Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0, Library.Scheme.AccentColor),
+                    ColorSequenceKeypoint.new(1, Library.Scheme.AccentColor2),
+                }),
+                Parent = TabButton,
             })
             local ButtonPadding = New("UIPadding", {
                 PaddingBottom = UDim.new(0, IsCompact and 6 or 11),
@@ -7528,7 +7684,7 @@ function Library:CreateWindow(WindowInfo)
             end
 
             TweenService:Create(TabButton, Library.TweenInfo, {
-                BackgroundTransparency = 0,
+                BackgroundTransparency = 0.15,
             }):Play()
             TweenService:Create(TabLabel, Library.TweenInfo, {
                 TextTransparency = 0,
@@ -8053,6 +8209,13 @@ function Library:CreateWindow(WindowInfo)
         end
 
         MainFrame.Visible = Library.Toggled
+
+        if Backdrop then
+            Backdrop.Visible = Library.Toggled
+            TweenService:Create(Backdrop, Library.TweenInfo, {
+                BackgroundTransparency = Library.Toggled and 0.45 or 1,
+            }):Play()
+        end
 
         if WindowInfo.UnlockMouseWhileOpen then
             ModalElement.Modal = Library.Toggled
