@@ -199,21 +199,21 @@ local Library = {
 
     IsLightTheme = false,
     Scheme = {
-    -- OnyxLib V2: Unified deep-charcoal palette
-    BackgroundColor = Color3.fromRGB(12, 12, 16),
-    MainColor = Color3.fromRGB(22, 22, 22),
-    AccentColor = Color3.fromRGB(129, 84, 255),
-    AccentColor2 = Color3.fromRGB(0, 199, 255),
-    OutlineColor = Color3.fromRGB(42, 42, 42),
-    FontColor = Color3.fromRGB(225, 225, 240),
+    -- Minimal: soft monochrome, single sky accent
+    BackgroundColor = Color3.fromRGB(10, 11, 13),
+    MainColor = Color3.fromRGB(19, 21, 24),
+    AccentColor = Color3.fromRGB(126, 198, 255),
+    AccentColor2 = Color3.fromRGB(126, 198, 255),
+    OutlineColor = Color3.fromRGB(36, 39, 44),
+    FontColor = Color3.fromRGB(230, 233, 238),
     Font = Font.fromEnum(Enum.Font.GothamBold),
 
-    RedColor = Color3.fromRGB(255, 65, 95),
+    RedColor = Color3.fromRGB(255, 90, 110),
     DarkColor = Color3.fromRGB(0, 0, 0),
     WhiteColor = Color3.fromRGB(255, 255, 255),
 
-    SidebarColor = Color3.fromRGB(12, 12, 16),
-    AccentGlow = Color3.fromRGB(200, 200, 220),
+    SidebarColor = Color3.fromRGB(10, 11, 13),
+    AccentGlow = Color3.fromRGB(180, 210, 230),
 },
 
     Registry = {},
@@ -3823,15 +3823,6 @@ do
             Parent = Switch,
         })
 
-        local SwitchGradient = New("UIGradient", {
-            Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, Color3.fromRGB(129, 84, 255)),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 199, 255)),
-            }),
-            Transparency = NumberSequence.new(1),
-            Parent = Switch,
-        })
-
         local Ball = New("Frame", {
             BackgroundColor3 = "FontColor",
             Size = UDim2.fromScale(1, 1),
@@ -3857,19 +3848,11 @@ do
             Switch.BackgroundTransparency = Toggle.Disabled and 0.75 or 0
             SwitchStroke.Transparency = Toggle.Disabled and 0.75 or 0
 
-            Switch.BackgroundColor3 = Toggle.Value and Color3.fromRGB(255, 255, 255) or Library.Scheme.MainColor
-            SwitchStroke.Color = Toggle.Value and Color3.fromRGB(0, 199, 255) or Library.Scheme.OutlineColor
+            Switch.BackgroundColor3 = Toggle.Value and Library.Scheme.AccentColor or Library.Scheme.MainColor
+            SwitchStroke.Color = Toggle.Value and Library.Scheme.AccentColor or Library.Scheme.OutlineColor
 
-            Library.Registry[Switch].BackgroundColor3 = Toggle.Value and function()
-                return Color3.fromRGB(255, 255, 255)
-            end or "MainColor"
-            Library.Registry[SwitchStroke].Color = Toggle.Value and function()
-                return Color3.fromRGB(0, 199, 255)
-            end or "OutlineColor"
-
-            TweenService:Create(SwitchGradient, Library.TweenInfo, {
-                Transparency = NumberSequence.new(Toggle.Value and 0 or 1),
-            }):Play()
+            Library.Registry[Switch].BackgroundColor3 = Toggle.Value and "AccentColor" or "MainColor"
+            Library.Registry[SwitchStroke].Color = Toggle.Value and "AccentColor" or "OutlineColor"
 
             if Toggle.Disabled then
                 Label.TextTransparency = 0.8
@@ -6075,12 +6058,12 @@ function Library:CreateWindow(WindowInfo)
         Library.KeybindFrame.Position = UDim2.new(0, 6, 0.5, 0)
         Library.KeybindFrame.Visible = false
 
-        --// OnyxLib V2 -- unified deep-charcoal window
-        local ONYX_BG  = Color3.fromRGB(15, 15, 15)
-        local ONYX_TOP = Color3.fromRGB(22, 22, 22)
-        local ONYX_ACC = Color3.fromRGB(129, 84, 255)
-        local ONYX_ACC2 = Color3.fromRGB(0, 199, 255)
-        local ONYX_OUT = Color3.fromRGB(42, 42, 42)
+        --// Minimal window frame
+        local ONYX_BG  = Color3.fromRGB(10, 11, 13)
+        local ONYX_TOP = Color3.fromRGB(13, 15, 17)
+        local ONYX_ACC = Color3.fromRGB(126, 198, 255)
+        local ONYX_ACC2 = Color3.fromRGB(126, 198, 255)
+        local ONYX_OUT = Color3.fromRGB(36, 39, 44)
 
         MainFrame = New("TextButton", {
             BackgroundColor3 = ONYX_BG,
@@ -6096,12 +6079,12 @@ function Library:CreateWindow(WindowInfo)
             Parent = MainFrame,
         })
         table.insert(Library.Scales, New("UIScale", { Parent = MainFrame }))
-        -- Glass edge 1px white stroke
+        -- Hairline border
         New("UIStroke", {
             ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-            Color = Color3.fromRGB(255, 255, 255),
+            Color = ONYX_OUT,
             Thickness = 1,
-            Transparency = 0.85,
+            Transparency = 0.6,
             Parent = MainFrame,
         })
 
@@ -6148,19 +6131,6 @@ function Library:CreateWindow(WindowInfo)
         })
         New("UICorner", {
             CornerRadius = UDim.new(0, WindowInfo.CornerRadius),
-            Parent = TopBar,
-        })
-        New("UIGradient", {
-            Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, ONYX_ACC),
-                ColorSequenceKeypoint.new(0.55, Color3.fromRGB(85, 90, 250)),
-                ColorSequenceKeypoint.new(1, ONYX_ACC2),
-            }),
-            Rotation = 90,
-            Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 0.88),
-                NumberSequenceKeypoint.new(1, 0.94),
-            }),
             Parent = TopBar,
         })
         New("Frame", {
@@ -6418,14 +6388,6 @@ function Library:CreateWindow(WindowInfo)
             Parent = MainFrame,
         })
         New("UICorner", { CornerRadius = UDim.new(0, WindowInfo.CornerRadius), Parent = SidebarBG })
-        New("UIGradient", {
-            Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, Color3.fromRGB(22, 21, 30)),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(12, 12, 16)),
-            }),
-            Rotation = 90,
-            Parent = SidebarBG,
-        })
         New("Frame", {
             AnchorPoint = Vector2.new(1, 0),
             BackgroundColor3 = ONYX_TOP,
@@ -6463,15 +6425,6 @@ function Library:CreateWindow(WindowInfo)
             Parent = MainFrame,
         })
         Library:AddToRegistry(Container, { BackgroundColor3 = "BackgroundColor" })
-        New("UIGradient", {
-            Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, Color3.fromRGB(28, 23, 40)),
-                ColorSequenceKeypoint.new(0.5, Color3.fromRGB(15, 15, 19)),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(10, 10, 14)),
-            }),
-            Rotation = 90,
-            Parent = Container,
-        })
         New("UIPadding", {
             PaddingBottom = UDim.new(0, 0), PaddingLeft = UDim.new(0, 6),
             PaddingRight = UDim.new(0, 6), PaddingTop = UDim.new(0, 0),
@@ -6601,7 +6554,6 @@ function Library:CreateWindow(WindowInfo)
         Icon = Library:GetCustomIcon(Icon)
         local TabPill = nil
         local TabAccentBar = nil
-        local TabAccentGlow = nil
         do
             -- OnyxLib V2 pill nav button
             TabButton = New("TextButton", {
@@ -6617,10 +6569,10 @@ function Library:CreateWindow(WindowInfo)
                 Parent = TabButton,
             })
 
-            -- Pill highlight — accent color, starts invisible
+            -- Pill highlight — soft surface, invisible by default
             TabPill = New("Frame", {
                 AnchorPoint = Vector2.new(0.5, 0.5),
-                BackgroundColor3 = ONYX_ACC,
+                BackgroundColor3 = Color3.fromRGB(255, 255, 255),
                 BackgroundTransparency = 1,
                 Position = UDim2.fromScale(0.5, 0.5),
                 Size = UDim2.fromScale(1, 1),
@@ -6631,34 +6583,20 @@ function Library:CreateWindow(WindowInfo)
                 CornerRadius = UDim.new(0, 8),
                 Parent = TabPill,
             })
-            New("UIGradient", {
-                Color = ColorSequence.new({
-                    ColorSequenceKeypoint.new(0, ONYX_ACC),
-                    ColorSequenceKeypoint.new(1, ONYX_ACC2),
-                }),
-                Parent = TabPill,
-            })
-            Library:AddToRegistry(TabPill, { BackgroundColor3 = "AccentColor" })
+            Library:AddToRegistry(TabPill, { BackgroundColor3 = "MainColor" })
 
-            -- Left accent bar — 3px rounded, fully opaque accent when active
+            -- Left accent bar — thin, minimal
             TabAccentBar = New("Frame", {
                 AnchorPoint = Vector2.new(0, 0.5),
-                BackgroundColor3 = ONYX_ACC,
+                BackgroundColor3 = Library.Scheme.AccentColor,
                 BackgroundTransparency = 1,
                 Position = UDim2.new(0, 0, 0.5, 0),
-                Size = UDim2.new(0, 3, 0, 18),
+                Size = UDim2.new(0, 3, 0, 16),
                 ZIndex = 3,
                 Parent = TabButton,
             })
             New("UICorner", {
                 CornerRadius = UDim.new(1, 0),
-                Parent = TabAccentBar,
-            })
-            TabAccentGlow = New("UIStroke", {
-                ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual,
-                Color = ONYX_ACC2,
-                Thickness = 5,
-                Transparency = 1,
                 Parent = TabAccentBar,
             })
             Library:AddToRegistry(TabAccentBar, { BackgroundColor3 = "AccentColor" })
@@ -6692,7 +6630,7 @@ function Library:CreateWindow(WindowInfo)
             if Icon then
                 TabIcon = New("ImageLabel", {
                     Image = Icon.Url,
-                    ImageColor3 = Icon.Custom and "WhiteColor" or "AccentColor",
+                    ImageColor3 = Icon.Custom and "WhiteColor" or "FontColor",
                     ImageRectOffset = Icon.ImageRectOffset,
                     ImageRectSize = Icon.ImageRectSize,
                     ImageTransparency = 0.5,
@@ -7354,16 +7292,13 @@ function Library:CreateWindow(WindowInfo)
 
             local T = TweenInfo.new(0.22, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
 
-            -- Pill: accent fill at low opacity
+            -- Pill: soft surface highlight
             TweenService:Create(TabPill, T, {
-                BackgroundTransparency = 0.93,
+                BackgroundTransparency = 0.9,
             }):Play()
-            -- Accent bar: fully opaque with cyan glow
+            -- Accent bar: visible
             TweenService:Create(TabAccentBar, T, {
                 BackgroundTransparency = 0,
-            }):Play()
-            TweenService:Create(TabAccentGlow, T, {
-                Transparency = 0.45,
             }):Play()
             -- Label: fully visible, accent color
             TweenService:Create(TabLabel, T, {
@@ -7388,7 +7323,6 @@ function Library:CreateWindow(WindowInfo)
 
             TweenService:Create(TabPill, T, { BackgroundTransparency = 1 }):Play()
             TweenService:Create(TabAccentBar, T, { BackgroundTransparency = 1 }):Play()
-            TweenService:Create(TabAccentGlow, T, { Transparency = 1 }):Play()
             TweenService:Create(TabLabel, T, {
                 TextTransparency = 0.5,
                 TextColor3 = Library.Scheme.FontColor,
