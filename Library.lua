@@ -3881,9 +3881,7 @@ do
                 return Library.Scheme.AccentColor2
             end or "OutlineColor"
 
-            TweenService:Create(SwitchGradient, Library.TweenInfo, {
-                Transparency = NumberSequence.new(Toggle.Value and 0 or 1),
-            }):Play()
+            SwitchGradient.Transparency = NumberSequence.new(Toggle.Value and 0 or 1)
             TweenService:Create(SwitchGlow, Library.TweenInfo, {
                 Transparency = Toggle.Value and 0.5 or 1,
             }):Play()
