@@ -46,6 +46,22 @@ local CustomImageManagerAssets = {
 
         Id = nil,
     },
+
+    LoadingIcon = {
+        RobloxId = 97544096941083,
+        Path = "Obsidian/assets/LoadingIcon.png",
+        URL = BaseURL .. "assets/LoadingIcon.png",
+
+        Id = nil,
+    },
+
+    CheckIcon = {
+        RobloxId = 97682394690683,
+        Path = "Obsidian/assets/CheckIcon.png",
+        URL = BaseURL .. "assets/CheckIcon.png",
+
+        Id = nil,
+    },
 }
 do
     local function RecursiveCreatePath(Path: string, IsFile: boolean?)
@@ -195,25 +211,24 @@ local Library = {
     OriginalMinSize = Vector2.new(480, 360),
     MinSize = Vector2.new(480, 360),
     DPIScale = 1,
-    CornerRadius = 10,
+    CornerRadius = 14,
 
     IsLightTheme = false,
     Scheme = {
-    -- Phantom: deep-space glass, violet→pink gradient accents
-    BackgroundColor = Color3.fromRGB(9, 9, 15),
-    MainColor = Color3.fromRGB(19, 19, 29),
-    AccentColor = Color3.fromRGB(139, 92, 246),
-    AccentColor2 = Color3.fromRGB(236, 72, 153),
-    OutlineColor = Color3.fromRGB(36, 36, 50),
-    FontColor = Color3.fromRGB(238, 235, 248),
+    -- OnyxLib V2: Unified deep-charcoal palette
+    BackgroundColor = Color3.fromRGB(12, 12, 16),
+    MainColor = Color3.fromRGB(22, 22, 22),
+    AccentColor = Color3.fromRGB(100, 80, 240),
+    OutlineColor = Color3.fromRGB(42, 42, 42),
+    FontColor = Color3.fromRGB(225, 225, 240),
     Font = Font.fromEnum(Enum.Font.GothamBold),
 
-    RedColor = Color3.fromRGB(244, 63, 94),
+    RedColor = Color3.fromRGB(255, 65, 95),
     DarkColor = Color3.fromRGB(0, 0, 0),
     WhiteColor = Color3.fromRGB(255, 255, 255),
 
-    SidebarColor = Color3.fromRGB(10, 10, 17),
-    AccentGlow = Color3.fromRGB(222, 192, 255),
+    SidebarColor = Color3.fromRGB(12, 12, 16),
+    AccentGlow = Color3.fromRGB(200, 200, 220),
 },
 
     Registry = {},
@@ -992,42 +1007,68 @@ type Icon = {
     IconName: string,
     ImageRectOffset: Vector2,
     ImageRectSize: Vector2,
+    FontFace: Font?,
+    Text: string?,
 }
+
+local FetchIcons = false
+local Icons: IconModule | nil = nil
 
 type IconModule = {
     Icons: { string },
     GetAsset: (Name: string) -> Icon?,
+    GetFontAsset: ((Name: string) -> { FontFace: Font, Text: string }?)?,
 }
 
-local FetchIcons, Icons = pcall(function()
-    return (loadstring(
-        game:HttpGet("https://gitlab.com/upio/lucide-roblox-direct/-/raw/main/source.lua")
-    ) :: () -> IconModule)()
-end)
-
 function Library:GetIcon(IconName: string)
-    if not FetchIcons then
+    if not FetchIcons or not Icons then
         return
     end
 
     local Success, Icon = pcall(Icons.GetAsset, IconName)
-    if not Success then
+    if not Success or not Icon then
         return
     end
+
+    local FontSuccess, FontIcon = false, nil
+    if Icons.GetFontAsset then
+        FontSuccess, FontIcon = pcall(Icons.GetFontAsset, IconName)
+    end
+
+    if FontSuccess and FontIcon and FontIcon.FontFace and FontIcon.Text then
+        local Merged = table.clone(Icon)
+        Merged.FontFace = FontIcon.FontFace
+        Merged.Text = FontIcon.Text
+
+        return Merged
+    end
+
     return Icon
 end
 
-function Library:GetCustomIcon(IconName: string)
-    if not IsValidCustomIcon(IconName) then
-        return Library:GetIcon(IconName)
-    else
+function Library:GetCustomIcon(IconName: string): any
+    if not IconName then
+        return nil
+    end
+
+    if tonumber(IconName) then
+        IconName = string.format("rbxassetid://%s", tostring(IconName))
+    end
+
+    if IsValidCustomIcon(IconName) then
         return {
             Url = IconName,
             ImageRectOffset = Vector2.zero,
             ImageRectSize = Vector2.zero,
-            Custom = true,
         }
     end
+
+    local LucideIcon = Library:GetIcon(IconName)
+    if LucideIcon then
+        return LucideIcon
+    end
+
+    return nil
 end
 
 function Library:Validate(Table: { [string]: any }, Template: { [string]: any }): { [string]: any }
@@ -1090,6 +1131,95 @@ local function New(ClassName: string, Properties: { [string]: any }): any
     end
 
     return Instance
+end
+
+function Library:ApplyLucideIcon(ImageGui: any, Icon: any, Rotation: number?)
+    if not ImageGui or not Icon then
+        return
+    end
+
+    if not (ImageGui:IsA("ImageLabel") or ImageGui:IsA("ImageButton")) then
+        return
+    end
+
+    ImageGui.Rotation = Rotation or ImageGui.Rotation
+
+    local FontLabel = ImageGui:FindFirstChild("__IconFont")
+    if Icon.FontFace and Icon.Text then
+        if not FontLabel then
+            FontLabel = New("TextLabel", {
+                Name = "__IconFont",
+                BackgroundTransparency = 1,
+                Size = UDim2.fromScale(1, 1),
+                RichText = false,
+                TextScaled = false,
+                TextXAlignment = Enum.TextXAlignment.Center,
+                TextYAlignment = Enum.TextYAlignment.Center,
+                Parent = ImageGui,
+            })
+            Library:RemoveFromRegistry(FontLabel)
+
+            local SyncLabel = function()
+                if not FontLabel.Parent then
+                    return
+                end
+
+                FontLabel.TextColor3 = ImageGui.ImageColor3
+                FontLabel.TextTransparency = ImageGui.ImageTransparency
+            end
+
+            local SyncTextSize = function()
+                if not FontLabel.Parent then
+                    return
+                end
+
+                local Absolute = ImageGui.AbsoluteSize
+                local Side = math.min(Absolute.X, Absolute.Y) / Library.DPIScale
+                FontLabel.TextSize = math.max(1, math.floor(Side + 0.5))
+            end
+
+            SyncLabel()
+            SyncTextSize()
+
+            Library:GiveSignal(ImageGui:GetPropertyChangedSignal("ImageColor3"):Connect(SyncLabel))
+            Library:GiveSignal(ImageGui:GetPropertyChangedSignal("ImageTransparency"):Connect(SyncLabel))
+            Library:GiveSignal(ImageGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(SyncTextSize))
+        else
+            Library:RemoveFromRegistry(FontLabel)
+        end
+
+        FontLabel.FontFace = Icon.FontFace
+        FontLabel.Text = Icon.Text
+        FontLabel.TextScaled = false
+        FontLabel.TextWrapped = false
+        FontLabel.TextXAlignment = Enum.TextXAlignment.Center
+        FontLabel.TextYAlignment = Enum.TextYAlignment.Center
+        FontLabel.TextColor3 = ImageGui.ImageColor3
+        FontLabel.TextTransparency = ImageGui.ImageTransparency
+
+        local Absolute = ImageGui.AbsoluteSize
+        local Side = math.min(Absolute.X, Absolute.Y) / Library.DPIScale
+        if Side > 0 then
+            FontLabel.TextSize = math.max(1, math.floor(Side + 0.5))
+        else
+            local OffsetSize = ImageGui.Size
+            FontLabel.TextSize = math.max(1, math.floor(math.min(OffsetSize.X.Offset, OffsetSize.Y.Offset) + 0.5))
+        end
+
+        FontLabel.Visible = true
+        ImageGui.ClipsDescendants = true
+        ImageGui.Image = ""
+        return
+    end
+
+    if FontLabel then
+        Library:RemoveFromRegistry(FontLabel)
+        FontLabel:Destroy()
+    end
+
+    ImageGui.Image = Icon.Url or ImageGui.Image
+    ImageGui.ImageRectOffset = Icon.ImageRectOffset or ImageGui.ImageRectOffset
+    ImageGui.ImageRectSize = Icon.ImageRectSize or ImageGui.ImageRectSize
 end
 
 --// Main Instances \\-
@@ -1988,6 +2118,28 @@ function Library:SetIconModule(module: IconModule)
     ResizeIcon = Library:GetIcon("move-diagonal-2")
     KeyIcon = Library:GetIcon("key")
     MoveIcon = Library:GetIcon("move")
+end
+
+local OnlineFetchIcons, OnlineIcons = pcall(function()
+    return (loadstring(
+        game:HttpGet("https://raw.githubusercontent.com/notpoiu/Molto/refs/heads/main/source.lua")
+    ) :: () -> IconModule)()
+end)
+do
+    if OnlineFetchIcons and OnlineIcons then
+        OnlineIcons.SetProvider("lucide")
+        Library:SetIconModule(OnlineIcons)
+    else
+        OnlineFetchIcons, OnlineIcons = pcall(function()
+            return (loadstring(
+                game:HttpGet("https://raw.githubusercontent.com/notpoiu/lucide-roblox-direct/refs/heads/main/source.lua")
+            ) :: () -> IconModule)()
+        end)
+
+        if OnlineFetchIcons and OnlineIcons then
+            Library:SetIconModule(OnlineIcons)
+        end
+    end
 end
 
 local BaseAddons = {}
@@ -3352,9 +3504,6 @@ do
                     TextTransparency = 0,
                 })
                 Button.Tween:Play()
-                TweenService:Create(Button.Stroke, Library.TweenInfo, {
-                    Color = Library.Scheme.AccentColor,
-                }):Play()
             end)
             Button.Base.MouseLeave:Connect(function()
                 if Button.Disabled then
@@ -3365,9 +3514,6 @@ do
                     TextTransparency = 0.4,
                 })
                 Button.Tween:Play()
-                TweenService:Create(Button.Stroke, Library.TweenInfo, {
-                    Color = Library.Scheme.OutlineColor,
-                }):Play()
             end)
 
             Button.Base.MouseButton1Click:Connect(function()
@@ -3659,8 +3805,8 @@ do
                 ImageTransparency = Toggle.Value and 0 or 1,
             }):Play()
 
-            Checkbox.BackgroundColor3 = Toggle.Value and Library.Scheme.AccentColor or Library.Scheme.MainColor
-            Library.Registry[Checkbox].BackgroundColor3 = Toggle.Value and "AccentColor" or "MainColor"
+            Checkbox.BackgroundColor3 = Library.Scheme.MainColor
+            Library.Registry[Checkbox].BackgroundColor3 = "MainColor"
         end
 
         function Toggle:OnChanged(Func)
@@ -3783,7 +3929,7 @@ do
         local Button = New("TextButton", {
             Active = not Toggle.Disabled,
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 18),
+            Size = UDim2.new(1, 0, 0, 22),
             Text = "",
             Visible = Toggle.Visible,
             Parent = Container,
@@ -3807,10 +3953,10 @@ do
         })
 
         local Switch = New("Frame", {
-            AnchorPoint = Vector2.new(1, 0),
+            AnchorPoint = Vector2.new(1, 0.5),
             BackgroundColor3 = "MainColor",
-            Position = UDim2.fromScale(1, 0),
-            Size = UDim2.fromOffset(32, 18),
+            Position = UDim2.fromScale(1, 0.5),
+            Size = UDim2.fromOffset(38, 20),
             Parent = Button,
         })
         New("UICorner", {
@@ -3826,23 +3972,6 @@ do
         })
         local SwitchStroke = New("UIStroke", {
             Color = "OutlineColor",
-            Parent = Switch,
-        })
-
-        local SwitchGlow = New("UIStroke", {
-            ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-            Color = Library.Scheme.AccentColor,
-            Thickness = 4,
-            Transparency = 1,
-            Parent = Switch,
-        })
-
-        local SwitchGradient = New("UIGradient", {
-            Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, Library.Scheme.AccentColor),
-                ColorSequenceKeypoint.new(1, Library.Scheme.AccentColor2),
-            }),
-            Transparency = NumberSequence.new(1),
             Parent = Switch,
         })
 
@@ -3871,20 +4000,11 @@ do
             Switch.BackgroundTransparency = Toggle.Disabled and 0.75 or 0
             SwitchStroke.Transparency = Toggle.Disabled and 0.75 or 0
 
-            Switch.BackgroundColor3 = Toggle.Value and Color3.fromRGB(255, 255, 255) or Library.Scheme.MainColor
-            SwitchStroke.Color = Toggle.Value and Library.Scheme.AccentColor2 or Library.Scheme.OutlineColor
+            Switch.BackgroundColor3 = Toggle.Value and Library.Scheme.AccentColor or Library.Scheme.MainColor
+            SwitchStroke.Color = Toggle.Value and Library.Scheme.AccentColor or Library.Scheme.OutlineColor
 
-            Library.Registry[Switch].BackgroundColor3 = Toggle.Value and function()
-                return Color3.fromRGB(255, 255, 255)
-            end or "MainColor"
-            Library.Registry[SwitchStroke].Color = Toggle.Value and function()
-                return Library.Scheme.AccentColor2
-            end or "OutlineColor"
-
-            SwitchGradient.Transparency = NumberSequence.new(Toggle.Value and 0 or 1)
-            TweenService:Create(SwitchGlow, Library.TweenInfo, {
-                Transparency = Toggle.Value and 0.5 or 1,
-            }):Play()
+            Library.Registry[Switch].BackgroundColor3 = Toggle.Value and "AccentColor" or "MainColor"
+            Library.Registry[SwitchStroke].Color = Toggle.Value and "AccentColor" or "OutlineColor"
 
             if Toggle.Disabled then
                 Label.TextTransparency = 0.8
@@ -4196,7 +4316,7 @@ do
 
         local Holder = New("Frame", {
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, Info.Compact and 13 or 31),
+            Size = UDim2.new(1, 0, 0, Info.Compact and 16 or 34),
             Visible = Slider.Visible,
             Parent = Container,
         })
@@ -4217,12 +4337,20 @@ do
             Active = not Slider.Disabled,
             AnchorPoint = Vector2.new(0, 1),
             BackgroundColor3 = "MainColor",
-            BorderColor3 = "OutlineColor",
-            BorderSizePixel = 1,
+            BorderSizePixel = 0,
+            ClipsDescendants = true,
             Position = UDim2.fromScale(0, 1),
-            Size = UDim2.new(1, 0, 0, 13),
+            Size = UDim2.new(1, 0, 0, 16),
             Text = "",
             Parent = Holder,
+        })
+        New("UICorner", {
+            CornerRadius = UDim.new(1, 0),
+            Parent = Bar,
+        })
+        New("UIStroke", {
+            Color = "OutlineColor",
+            Parent = Bar,
         })
 
         local DisplayLabel = New("TextLabel", {
@@ -4245,11 +4373,8 @@ do
             Size = UDim2.fromScale(0.5, 1),
             Parent = Bar,
         })
-        New("UIGradient", {
-            Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, Library.Scheme.AccentColor),
-                ColorSequenceKeypoint.new(1, Library.Scheme.AccentColor2),
-            }),
+        New("UICorner", {
+            CornerRadius = UDim.new(1, 0),
             Parent = Fill,
         })
 
@@ -6090,7 +6215,6 @@ function Library:CreateWindow(WindowInfo)
     local InitialLeftWidth = math.ceil(WindowInfo.Size.X.Offset * 0.3)
     local IsCompact = WindowInfo.SidebarCompacted
     local LastExpandedWidth = InitialLeftWidth
-    local Backdrop = nil
 
     do
         Library.KeybindFrame, Library.KeybindContainer = Library:AddDraggableMenu("Keybinds")
@@ -6098,29 +6222,11 @@ function Library:CreateWindow(WindowInfo)
         Library.KeybindFrame.Position = UDim2.new(0, 6, 0.5, 0)
         Library.KeybindFrame.Visible = false
 
-        --// Phantom window frame
-        local ONYX_BG  = Color3.fromRGB(12, 12, 20)
-        local ONYX_TOP = Color3.fromRGB(19, 18, 32)
-        local ONYX_ACC = Color3.fromRGB(139, 92, 246)
-        local ONYX_ACC2 = Color3.fromRGB(236, 72, 153)
-        local ONYX_OUT = Color3.fromRGB(38, 38, 54)
-
-        -- Dimmed screen backdrop
-        Backdrop = New("Frame", {
-            BackgroundColor3 = Color3.fromRGB(4, 4, 8),
-            BackgroundTransparency = 1,
-            Size = UDim2.fromScale(1, 1),
-            Visible = false,
-            Parent = ScreenGui,
-        })
-        New("UIGradient", {
-            Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, Color3.fromRGB(22, 14, 44)),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(5, 5, 12)),
-            }),
-            Rotation = 90,
-            Parent = Backdrop,
-        })
+        --// OnyxLib V2 -- unified deep-charcoal window
+        local ONYX_BG  = Color3.fromRGB(15, 15, 15)
+        local ONYX_TOP = Color3.fromRGB(22, 22, 22)
+        local ONYX_ACC = Color3.fromRGB(100, 80, 240)
+        local ONYX_OUT = Color3.fromRGB(42, 42, 42)
 
         MainFrame = New("TextButton", {
             BackgroundColor3 = ONYX_BG,
@@ -6136,48 +6242,19 @@ function Library:CreateWindow(WindowInfo)
             Parent = MainFrame,
         })
         table.insert(Library.Scales, New("UIScale", { Parent = MainFrame }))
-        -- Deep-space background wash
-        New("UIGradient", {
-            Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, Color3.fromRGB(26, 20, 48)),
-                ColorSequenceKeypoint.new(0.5, Color3.fromRGB(13, 13, 22)),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(10, 10, 17)),
-            }),
-            Rotation = 90,
-            Parent = MainFrame,
-        })
-        -- Outer glow + hairline border
-        New("UIStroke", {
-            ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-            Color = Color3.fromRGB(139, 92, 246),
-            Thickness = 2,
-            Transparency = 0.75,
-            Parent = MainFrame,
-        })
+        -- Glass edge 1px white stroke
         New("UIStroke", {
             ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
             Color = Color3.fromRGB(255, 255, 255),
             Thickness = 1,
-            Transparency = 0.93,
+            Transparency = 0.85,
             Parent = MainFrame,
         })
 
-        -- Accent gradient separator under top bar
-        local AccentSeparator = New("Frame", {
-            BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-            Position = UDim2.fromOffset(0, 51),
-            Size = UDim2.new(1, 0, 0, 2),
-            ZIndex = 4,
-            Parent = MainFrame,
-        })
-        New("UIGradient", {
-            Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, ONYX_ACC),
-                ColorSequenceKeypoint.new(0.5, Color3.fromRGB(190, 96, 210)),
-                ColorSequenceKeypoint.new(1, ONYX_ACC2),
-            }),
-            Rotation = 90,
-            Parent = AccentSeparator,
+        -- Separator under top bar
+        Library:MakeLine(MainFrame, {
+            Position = UDim2.fromOffset(0, 50),
+            Size = UDim2.new(1, 0, 0, 1),
         })
 
         -- Sidebar divider
@@ -6254,13 +6331,6 @@ function Library:CreateWindow(WindowInfo)
             Parent = TitleHolder,
         })
         New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = BrandPill })
-        New("UIGradient", {
-            Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, ONYX_ACC),
-                ColorSequenceKeypoint.new(1, ONYX_ACC2),
-            }),
-            Parent = BrandPill,
-        })
         Library:AddToRegistry(BrandPill, { BackgroundColor3 = "AccentColor" })
 
         if WindowInfo.Icon then
@@ -6364,24 +6434,13 @@ function Library:CreateWindow(WindowInfo)
             PaddingRight = UDim.new(0, 7), PaddingTop = UDim.new(0, 7),
             Parent = SearchBox,
         })
-        local SearchBoxStroke = New("UIStroke", {
+        New("UIStroke", {
             ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
             Color = ONYX_OUT,
             Thickness = 1,
             Parent = SearchBox,
         })
         Library:AddToRegistry(SearchBox, { BackgroundColor3 = "MainColor" })
-
-        SearchBox.Focused:Connect(function()
-            TweenService:Create(SearchBoxStroke, Library.TweenInfo, {
-                Color = ONYX_ACC,
-            }):Play()
-        end)
-        SearchBox.FocusLost:Connect(function()
-            TweenService:Create(SearchBoxStroke, Library.TweenInfo, {
-                Color = ONYX_OUT,
-            }):Play()
-        end)
 
         local SearchIcon = Library:GetIcon("search")
         if SearchIcon then
@@ -6647,7 +6706,6 @@ function Library:CreateWindow(WindowInfo)
         Icon = Library:GetCustomIcon(Icon)
         local TabPill = nil
         local TabAccentBar = nil
-        local TabGlow = nil
         do
             -- OnyxLib V2 pill nav button
             TabButton = New("TextButton", {
@@ -6663,10 +6721,10 @@ function Library:CreateWindow(WindowInfo)
                 Parent = TabButton,
             })
 
-            -- Pill highlight — gradient fill, invisible by default
+            -- Pill highlight — accent color, starts invisible
             TabPill = New("Frame", {
                 AnchorPoint = Vector2.new(0.5, 0.5),
-                BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+                BackgroundColor3 = Color3.fromRGB(100, 80, 240),
                 BackgroundTransparency = 1,
                 Position = UDim2.fromScale(0.5, 0.5),
                 Size = UDim2.fromScale(1, 1),
@@ -6677,38 +6735,17 @@ function Library:CreateWindow(WindowInfo)
                 CornerRadius = UDim.new(0, 8),
                 Parent = TabPill,
             })
-            New("UIGradient", {
-                Color = ColorSequence.new({
-                    ColorSequenceKeypoint.new(0, Library.Scheme.AccentColor),
-                    ColorSequenceKeypoint.new(1, Library.Scheme.AccentColor2),
-                }),
-                Parent = TabPill,
-            })
-            TabGlow = New("UIStroke", {
-                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-                Color = Library.Scheme.AccentColor2,
-                Thickness = 1.5,
-                Transparency = 1,
-                Parent = TabPill,
-            })
-            Library:AddToRegistry(TabPill, { BackgroundColor3 = "MainColor" })
+            Library:AddToRegistry(TabPill, { BackgroundColor3 = "AccentColor" })
 
-            -- Left accent bar — gradient, thin
+            -- Left accent bar — 3px rounded, fully opaque accent when active
             TabAccentBar = New("Frame", {
                 AnchorPoint = Vector2.new(0, 0.5),
-                BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+                BackgroundColor3 = Color3.fromRGB(100, 80, 240),
                 BackgroundTransparency = 1,
                 Position = UDim2.new(0, 0, 0.5, 0),
                 Size = UDim2.new(0, 3, 0, 18),
                 ZIndex = 3,
                 Parent = TabButton,
-            })
-            New("UIGradient", {
-                Color = ColorSequence.new({
-                    ColorSequenceKeypoint.new(0, Library.Scheme.AccentColor),
-                    ColorSequenceKeypoint.new(1, Library.Scheme.AccentColor2),
-                }),
-                Parent = TabAccentBar,
             })
             New("UICorner", {
                 CornerRadius = UDim.new(1, 0),
@@ -6745,16 +6782,16 @@ function Library:CreateWindow(WindowInfo)
             if Icon then
                 TabIcon = New("ImageLabel", {
                     Image = Icon.Url,
-                    ImageColor3 = Icon.Custom and "WhiteColor" or "FontColor",
+                    ImageColor3 = Icon.Custom and "WhiteColor" or "AccentColor",
                     ImageRectOffset = Icon.ImageRectOffset,
                     ImageRectSize = Icon.ImageRectSize,
                     ImageTransparency = 0.5,
                     ScaleType = Enum.ScaleType.Fit,
-                    Size = UDim2.fromScale(1, 1),
-                    SizeConstraint = IsCompact and Enum.SizeConstraint.RelativeXY or Enum.SizeConstraint.RelativeYY,
+                    Size = UDim2.fromOffset(16, 16),
                     ZIndex = 1,
                     Parent = ButtonContent,
                 })
+                Library:ApplyLucideIcon(TabIcon, Icon)
             end
 
             TabLabel = New("TextLabel", {
@@ -7097,30 +7134,10 @@ function Library:CreateWindow(WindowInfo)
                     Parent = GroupboxHolder,
                 })
                 Library:AddOutline(GroupboxHolder)
-                New("UIGradient", {
-                    Color = ColorSequence.new({
-                        ColorSequenceKeypoint.new(0, Color3.fromRGB(31, 25, 54)),
-                        ColorSequenceKeypoint.new(0.1, Color3.fromRGB(17, 17, 28)),
-                        ColorSequenceKeypoint.new(1, Color3.fromRGB(12, 12, 20)),
-                    }),
-                    Rotation = 90,
-                    Parent = GroupboxHolder,
-                })
 
-                local HeaderDivider = New("Frame", {
-                    BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-                    Position = UDim2.fromOffset(0, 34),
+                Library:MakeLine(GroupboxHolder, {
+                    Position = UDim2.fromOffset(0, 38),
                     Size = UDim2.new(1, 0, 0, 1),
-                    Parent = GroupboxHolder,
-                })
-                New("UIGradient", {
-                    Color = ColorSequence.new({
-                        ColorSequenceKeypoint.new(0, Library.Scheme.AccentColor),
-                        ColorSequenceKeypoint.new(1, Library.Scheme.AccentColor2),
-                    }),
-                    Rotation = 90,
-                    Transparency = NumberSequence.new(0.65),
-                    Parent = HeaderDivider,
                 })
 
                 local BoxIcon = Library:GetCustomIcon(Info.IconName)
@@ -7139,35 +7156,34 @@ function Library:CreateWindow(WindowInfo)
                 GroupboxLabel = New("TextLabel", {
                     BackgroundTransparency = 1,
                     Position = UDim2.fromOffset(BoxIcon and 24 or 0, 0),
-                    Size = UDim2.new(1, 0, 0, 34),
+                    Size = UDim2.new(1, 0, 0, 38),
                     Text = Info.Name,
-                    TextColor3 = Library.Scheme.AccentColor,
                     TextSize = 15,
                     TextXAlignment = Enum.TextXAlignment.Left,
                     Parent = GroupboxHolder,
                 })
                 New("UIPadding", {
-                    PaddingLeft = UDim.new(0, 12),
-                    PaddingRight = UDim.new(0, 12),
+                    PaddingLeft = UDim.new(0, 14),
+                    PaddingRight = UDim.new(0, 14),
                     Parent = GroupboxLabel,
                 })
 
                 GroupboxContainer = New("Frame", {
                     BackgroundTransparency = 1,
-                    Position = UDim2.fromOffset(0, 35),
-                    Size = UDim2.new(1, 0, 1, -35),
+                    Position = UDim2.fromOffset(0, 39),
+                    Size = UDim2.new(1, 0, 1, -39),
                     Parent = GroupboxHolder,
                 })
 
                 GroupboxList = New("UIListLayout", {
-                    Padding = UDim.new(0, 8),
+                    Padding = UDim.new(0, 10),
                     Parent = GroupboxContainer,
                 })
                 New("UIPadding", {
-                    PaddingBottom = UDim.new(0, 7),
-                    PaddingLeft = UDim.new(0, 7),
-                    PaddingRight = UDim.new(0, 7),
-                    PaddingTop = UDim.new(0, 7),
+                    PaddingBottom = UDim.new(0, 10),
+                    PaddingLeft = UDim.new(0, 10),
+                    PaddingRight = UDim.new(0, 10),
+                    PaddingTop = UDim.new(0, 10),
                     Parent = GroupboxContainer,
                 })
             end
@@ -7414,10 +7430,7 @@ function Library:CreateWindow(WindowInfo)
                 TextTransparency = Hovering and 0.15 or 0.5,
             }):Play()
             TweenService:Create(TabPill, T, {
-                BackgroundTransparency = Hovering and 0.8 or 1,
-            }):Play()
-            TweenService:Create(TabGlow, T, {
-                Transparency = Hovering and 0.8 or 1,
+                BackgroundTransparency = Hovering and 0.92 or 1,
             }):Play()
             if TabIcon then
                 TweenService:Create(TabIcon, T, {
@@ -7431,14 +7444,11 @@ function Library:CreateWindow(WindowInfo)
 
             local T = TweenInfo.new(0.22, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
 
-            -- Pill: gradient fill for the active tab
+            -- Pill: accent fill at low opacity
             TweenService:Create(TabPill, T, {
-                BackgroundTransparency = 0.15,
+                BackgroundTransparency = 0.93,
             }):Play()
-            TweenService:Create(TabGlow, T, {
-                Transparency = 0.5,
-            }):Play()
-            -- Accent bar: visible
+            -- Accent bar: fully opaque
             TweenService:Create(TabAccentBar, T, {
                 BackgroundTransparency = 0,
             }):Play()
@@ -7464,7 +7474,6 @@ function Library:CreateWindow(WindowInfo)
             local T = TweenInfo.new(0.18, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
 
             TweenService:Create(TabPill, T, { BackgroundTransparency = 1 }):Play()
-            TweenService:Create(TabGlow, T, { Transparency = 1 }):Play()
             TweenService:Create(TabAccentBar, T, { BackgroundTransparency = 1 }):Play()
             TweenService:Create(TabLabel, T, {
                 TextTransparency = 0.5,
@@ -7528,17 +7537,6 @@ function Library:CreateWindow(WindowInfo)
                 Size = UDim2.new(1, 0, 0, 40),
                 Text = "",
                 Parent = Tabs,
-            })
-            New("UICorner", {
-                CornerRadius = UDim.new(0, 8),
-                Parent = TabButton,
-            })
-            New("UIGradient", {
-                Color = ColorSequence.new({
-                    ColorSequenceKeypoint.new(0, Library.Scheme.AccentColor),
-                    ColorSequenceKeypoint.new(1, Library.Scheme.AccentColor2),
-                }),
-                Parent = TabButton,
             })
             local ButtonPadding = New("UIPadding", {
                 PaddingBottom = UDim.new(0, IsCompact and 6 or 11),
@@ -7682,7 +7680,7 @@ function Library:CreateWindow(WindowInfo)
             end
 
             TweenService:Create(TabButton, Library.TweenInfo, {
-                BackgroundTransparency = 0.15,
+                BackgroundTransparency = 0,
             }):Play()
             TweenService:Create(TabLabel, Library.TweenInfo, {
                 TextTransparency = 0,
@@ -8207,13 +8205,6 @@ function Library:CreateWindow(WindowInfo)
         end
 
         MainFrame.Visible = Library.Toggled
-
-        if Backdrop then
-            Backdrop.Visible = Library.Toggled
-            TweenService:Create(Backdrop, Library.TweenInfo, {
-                BackgroundTransparency = Library.Toggled and 0.45 or 1,
-            }):Play()
-        end
 
         if WindowInfo.UnlockMouseWhileOpen then
             ModalElement.Modal = Library.Toggled
