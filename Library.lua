@@ -218,7 +218,7 @@ local Library = {
     -- OnyxLib V2: Unified deep-charcoal palette
     BackgroundColor = Color3.fromRGB(12, 12, 16),
     MainColor = Color3.fromRGB(22, 22, 22),
-    AccentColor = Color3.fromRGB(100, 80, 240),
+    AccentColor = Color3.fromRGB(46, 213, 115),
     OutlineColor = Color3.fromRGB(42, 42, 42),
     FontColor = Color3.fromRGB(225, 225, 240),
     Font = Font.fromEnum(Enum.Font.GothamBold),
@@ -2120,11 +2120,18 @@ function Library:SetIconModule(module: IconModule)
     MoveIcon = Library:GetIcon("move")
 end
 
-local OnlineFetchIcons, OnlineIcons = pcall(function()
-    return (loadstring(
-        game:HttpGet("https://raw.githubusercontent.com/notpoiu/Molto/refs/heads/main/source.lua")
-    ) :: () -> IconModule)()
-end)
+local OnlineFetchIcons, OnlineIcons = false, nil
+for _ = 1, 3 do
+    OnlineFetchIcons, OnlineIcons = pcall(function()
+        return (loadstring(
+            game:HttpGet("https://raw.githubusercontent.com/notpoiu/Molto/refs/heads/main/source.lua")
+        ) :: () -> IconModule)()
+    end)
+    if OnlineFetchIcons and OnlineIcons then
+        break
+    end
+    task.wait(0.3)
+end
 do
     if OnlineFetchIcons and OnlineIcons then
         OnlineIcons.SetProvider("lucide")
@@ -6225,7 +6232,7 @@ function Library:CreateWindow(WindowInfo)
         --// OnyxLib V2 -- unified deep-charcoal window
         local ONYX_BG  = Color3.fromRGB(15, 15, 15)
         local ONYX_TOP = Color3.fromRGB(22, 22, 22)
-        local ONYX_ACC = Color3.fromRGB(100, 80, 240)
+        local ONYX_ACC = Color3.fromRGB(46, 213, 115)
         local ONYX_OUT = Color3.fromRGB(42, 42, 42)
 
         MainFrame = New("TextButton", {
@@ -6724,7 +6731,7 @@ function Library:CreateWindow(WindowInfo)
             -- Pill highlight — accent color, starts invisible
             TabPill = New("Frame", {
                 AnchorPoint = Vector2.new(0.5, 0.5),
-                BackgroundColor3 = Color3.fromRGB(100, 80, 240),
+                BackgroundColor3 = Color3.fromRGB(46, 213, 115),
                 BackgroundTransparency = 1,
                 Position = UDim2.fromScale(0.5, 0.5),
                 Size = UDim2.fromScale(1, 1),
@@ -6740,7 +6747,7 @@ function Library:CreateWindow(WindowInfo)
             -- Left accent bar — 3px rounded, fully opaque accent when active
             TabAccentBar = New("Frame", {
                 AnchorPoint = Vector2.new(0, 0.5),
-                BackgroundColor3 = Color3.fromRGB(100, 80, 240),
+                BackgroundColor3 = Color3.fromRGB(46, 213, 115),
                 BackgroundTransparency = 1,
                 Position = UDim2.new(0, 0, 0.5, 0),
                 Size = UDim2.new(0, 3, 0, 18),
