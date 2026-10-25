@@ -91,7 +91,7 @@ local Library = {
         RedColor = Color3.fromRGB(255, 72, 90),
         DarkColor = Color3.fromRGB(0, 0, 0),
         WhiteColor = Color3.fromRGB(255, 255, 255),
-        Font = Fonts.Medium,
+        Font = Fonts.SemiBold,
     },
 }
 
@@ -636,32 +636,61 @@ function Library:ClosePopup()
     local Active = Library.ActivePopup
     if Active then
         Library.ActivePopup = nil
+        if Active.Watch then
+            Active.Watch:Disconnect()
+        end
         pcall(Active.Close)
     end
 end
 
 function Library:RegisterPopup(Frame, CloseFunc, Opener)
     Library:ClosePopup()
-    Library.ActivePopup = { Frame = Frame, Close = CloseFunc, Opener = Opener }
+    local Entry = { Frame = Frame, Close = CloseFunc, Opener = Opener, Opened = os.clock() }
+    --// close when whatever opened it moves (scrolling, dragging, resizing)
+    if Opener then
+        Entry.Watch = Opener:GetPropertyChangedSignal("AbsolutePosition"):Connect(function()
+            if Library.ActivePopup == Entry and os.clock() - Entry.Opened > 0.25 then
+                Library:ClosePopup()
+            end
+        end)
+    end
+    Library.ActivePopup = Entry
 end
 
 function Library:IsPopupOpenFor(Opener)
     return Library.ActivePopup ~= nil and Library.ActivePopup.Opener == Opener
 end
 
---// Place a popup under (or above) an anchor button
+--// Place a popup under (or above) an anchor, never on top of it.
+--// If neither side has room the popup is shortened (its list scrolls).
 local function PlacePopup(Popup, Anchor, Width, Height, AlignRight)
     local ViewSize = Overlay.AbsoluteSize
     local AnchorPos, AnchorSize = Anchor.AbsolutePosition, Anchor.AbsoluteSize
+    local Margin = 8
+    local Gap = 6
+
     local X = AnchorPos.X
     if AlignRight then
         X = AnchorPos.X + AnchorSize.X - Width
     end
-    X = math.clamp(X, 6, math.max(6, ViewSize.X - Width - 6))
-    local Y = AnchorPos.Y + AnchorSize.Y + 6
-    if Y + Height > ViewSize.Y - 6 then
-        Y = math.max(6, AnchorPos.Y - Height - 6)
+    X = math.clamp(X, Margin, math.max(Margin, ViewSize.X - Width - Margin))
+
+    local SpaceBelow = ViewSize.Y - (AnchorPos.Y + AnchorSize.Y + Gap) - Margin
+    local SpaceAbove = AnchorPos.Y - Gap - Margin
+
+    local Y
+    if Height <= SpaceBelow then
+        Y = AnchorPos.Y + AnchorSize.Y + Gap
+    elseif Height <= SpaceAbove then
+        Y = AnchorPos.Y - Gap - Height
+    elseif SpaceBelow >= SpaceAbove then
+        Height = math.max(60, SpaceBelow)
+        Y = AnchorPos.Y + AnchorSize.Y + Gap
+    else
+        Height = math.max(60, SpaceAbove)
+        Y = AnchorPos.Y - Gap - Height
     end
+
     Popup.Position = UDim2.fromOffset(X, Y)
     Popup.Size = UDim2.fromOffset(Width, Height)
 end
@@ -1131,7 +1160,7 @@ function Library:CreateWindow(Info)
 
     local Title = tostring(Info.Title or "Verdant")
     local Footer = tostring(Info.Footer or "")
-    local SidebarWidth = math.clamp(tonumber(Info.SidebarWidth) or 196, 150, 280)
+    local SidebarWidth = math.clamp(tonumber(Info.SidebarWidth) or 216, 150, 300)
     local TopHeight = 56
     local FooterHeight = 30
     local MinSize = Vector2.new(580, 380)
@@ -1198,41 +1227,63 @@ function Library:CreateWindow(Info)
     local Logo = New("Frame", {
         AnchorPoint = Vector2.new(0, 0.5),
         BackgroundColor3 = "AccentColor",
-        Position = UDim2.new(0, 16, 0.5, 0),
+        Position = UDim2.new(0, 14, 0.5, 0),
         Size = UDim2.fromOffset(30, 30),
         Parent = Brand,
     })
     Corner(Logo, 9)
+    New("TextLabel", {
+        FontFace = Fonts.Bold,
+        Size = UDim2.fromScale(1, 1),
+        Text = string.upper(string.sub(Title, 1, 1)),
+        TextColor3 = "BackgroundColor",
+        TextSize = 16,
+        Parent = Logo,
+    })
 
+    --// A custom icon only replaces the letter badge once it has really loaded
     local LogoIcon = Library:ResolveIcon(Info.Icon)
     if LogoIcon and LogoIcon.Custom then
-        Logo.BackgroundTransparency = 1
         local Img = New("ImageLabel", {
             Size = UDim2.fromScale(1, 1),
+            Visible = false,
+            ZIndex = 2,
             Parent = Logo,
         })
-        Library:ApplyIcon(Img, LogoIcon, 30)
         Corner(Img, 9)
-    else
-        New("TextLabel", {
-            FontFace = Fonts.Bold,
-            Size = UDim2.fromScale(1, 1),
-            Text = string.upper(string.sub(Title, 1, 1)),
-            TextColor3 = "BackgroundColor",
-            TextSize = 16,
-            Parent = Logo,
-        })
+        Library:ApplyIcon(Img, LogoIcon, 30)
+        task.spawn(function()
+            local Waited = 0
+            while Img.Parent and not Img.IsLoaded and Waited < 4 do
+                task.wait(0.2)
+                Waited = Waited + 0.2
+            end
+            if Img.Parent and Img.IsLoaded then
+                Img.Visible = true
+                Logo.BackgroundTransparency = 1
+                for _, Child in ipairs(Logo:GetChildren()) do
+                    if Child:IsA("TextLabel") then
+                        Child.Visible = false
+                    end
+                end
+            end
+        end)
     end
 
+    --// The full title always fits: the text shrinks instead of being cut off
     local TitleLabel = New("TextLabel", {
         FontFace = Fonts.Bold,
-        Position = UDim2.fromOffset(56, 0),
-        Size = UDim2.new(1, -64, 1, 0),
+        Position = UDim2.fromOffset(54, 0),
+        Size = UDim2.new(1, -62, 1, 0),
         Text = Title,
-        TextSize = 15,
-        TextTruncate = Enum.TextTruncate.AtEnd,
+        TextScaled = true,
         TextXAlignment = Enum.TextXAlignment.Left,
         Parent = Brand,
+    })
+    New("UITextSizeConstraint", {
+        MaxTextSize = math.floor(16 * Library.FontScale + 0.5),
+        MinTextSize = 10,
+        Parent = TitleLabel,
     })
 
     local SearchHolder = New("Frame", {
@@ -1321,7 +1372,8 @@ function Library:CreateWindow(Info)
     Pad(TabScroll, 12, 12, 12, 12)
     ListLayout(TabScroll, 4)
 
-    local Chip = New("Frame", {
+    --// User card: hidden by default (streamer friendly), click it to reveal
+    local Chip = New("TextButton", {
         AnchorPoint = Vector2.new(0, 1),
         BackgroundTransparency = 1,
         Position = UDim2.new(0, 0, 1, 0),
@@ -1343,38 +1395,68 @@ function Library:CreateWindow(Info)
         Parent = Chip,
     })
     Round(Avatar)
-    task.spawn(function()
-        local Ok, Image = pcall(function()
-            return Players:GetUserThumbnailAsync(
-                LocalPlayer.UserId,
-                Enum.ThumbnailType.HeadShot,
-                Enum.ThumbnailSize.Size100x100
-            )
-        end)
-        if Ok and Image and Avatar.Parent then
-            Avatar.Image = Image
-        end
-    end)
-    New("TextLabel", {
+    local AvatarHidden = New("TextLabel", {
+        FontFace = Fonts.Bold,
+        Size = UDim2.fromScale(1, 1),
+        Text = "?",
+        TextColor3 = "MutedColor",
+        TextSize = 15,
+        Parent = Avatar,
+    })
+    local ChipName = New("TextLabel", {
         FontFace = Fonts.SemiBold,
         Position = UDim2.new(0, 56, 0.5, -17),
-        Size = UDim2.new(1, -66, 0, 17),
-        Text = LocalPlayer.DisplayName,
+        Size = UDim2.new(1, -66, 0, 18),
+        Text = "User hidden",
         TextSize = 13,
         TextTruncate = Enum.TextTruncate.AtEnd,
         TextXAlignment = Enum.TextXAlignment.Left,
         Parent = Chip,
     })
-    New("TextLabel", {
-        Position = UDim2.new(0, 56, 0.5, 1),
+    local ChipHandle = New("TextLabel", {
+        Position = UDim2.new(0, 56, 0.5, 2),
         Size = UDim2.new(1, -66, 0, 16),
-        Text = "@" .. LocalPlayer.Name,
+        Text = "Click to show",
         TextColor3 = "MutedColor",
-        TextSize = 12,
+        TextSize = 11,
         TextTruncate = Enum.TextTruncate.AtEnd,
         TextXAlignment = Enum.TextXAlignment.Left,
         Parent = Chip,
     })
+
+    local UserShown = false
+    local AvatarLoaded = false
+    local function SetUserShown(State)
+        UserShown = State == true
+        AvatarHidden.Visible = not UserShown
+        Avatar.ImageTransparency = UserShown and 0 or 1
+        if UserShown then
+            ChipName.Text = LocalPlayer.DisplayName
+            ChipHandle.Text = "@" .. LocalPlayer.Name
+            if not AvatarLoaded then
+                AvatarLoaded = true
+                task.spawn(function()
+                    local Ok, Image = pcall(function()
+                        return Players:GetUserThumbnailAsync(
+                            LocalPlayer.UserId,
+                            Enum.ThumbnailType.HeadShot,
+                            Enum.ThumbnailSize.Size100x100
+                        )
+                    end)
+                    if Ok and Image and Avatar.Parent then
+                        Avatar.Image = Image
+                    end
+                end)
+            end
+        else
+            ChipName.Text = "User hidden"
+            ChipHandle.Text = "Click to show"
+        end
+    end
+    Chip.MouseButton1Click:Connect(function()
+        SetUserShown(not UserShown)
+    end)
+    SetUserShown(Info.ShowUser == true)
 
     --// Content area
     local Content = New("Frame", {
@@ -1931,7 +2013,7 @@ function Funcs:AddLabel(Arg1, Arg2)
 
     local TextLabel = New("TextLabel", {
         AutomaticSize = Wrap and Enum.AutomaticSize.Y or Enum.AutomaticSize.None,
-        FontFace = Fonts.Medium,
+        FontFace = Fonts.SemiBold,
         Size = UDim2.new(1, 0, 0, 20),
         Text = Label.Text,
         TextSize = 13,
@@ -2057,7 +2139,10 @@ function Funcs:AddButton(Arg1, Arg2)
         Relayout()
 
         local function Rest()
-            Tween(Button, { BackgroundColor3 = Derived.ElementColor() }, 0.14)
+            Tween(Button, {
+                BackgroundColor3 = Derived.ElementColor(),
+                TextColor3 = Item.Armed and Scheme.AccentColor or Scheme.FontColor,
+            }, 0.14)
             Tween(ButtonStroke, { Color = Scheme.OutlineColor }, 0.14)
         end
 
@@ -2160,7 +2245,7 @@ local function BuildToggle(Self, Idx, Info, Style)
         Parent = Holder,
     })
     local Label = New("TextLabel", {
-        FontFace = Fonts.Medium,
+        FontFace = Fonts.SemiBold,
         Size = UDim2.new(1, -50, 1, 0),
         Text = Toggle.Text,
         TextSize = 13,
@@ -2320,7 +2405,7 @@ function Funcs:AddSlider(Idx, Info)
     local Entry = RegisterEntry(self, Holder, Slider.Text)
 
     local Label = New("TextLabel", {
-        FontFace = Fonts.Medium,
+        FontFace = Fonts.SemiBold,
         Size = UDim2.new(1, -96, 0, 20),
         Text = Slider.Compact and "" or Slider.Text,
         TextSize = 13,
@@ -2486,7 +2571,7 @@ function Funcs:AddInput(Idx, Info)
     local Label = nil
     if HasLabel then
         Label = New("TextLabel", {
-            FontFace = Fonts.Medium,
+            FontFace = Fonts.SemiBold,
             Size = UDim2.new(1, 0, 0, 20),
             Text = tostring(Info.Text),
             TextSize = 13,
@@ -2650,7 +2735,7 @@ function Funcs:AddDropdown(Idx, Info)
     local Label = nil
     if HasLabel then
         Label = New("TextLabel", {
-            FontFace = Fonts.Medium,
+            FontFace = Fonts.SemiBold,
             Size = UDim2.new(1, 0, 0, 20),
             Text = tostring(Info.Text),
             TextSize = 13,
@@ -2851,7 +2936,7 @@ function Funcs:AddDropdown(Idx, Info)
                     else
                         Apply(Value, false)
                     end
-                    Close()
+                    Library:ClosePopup()
                 end
             end)
         end
