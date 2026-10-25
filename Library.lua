@@ -395,6 +395,7 @@ local Overlay = New("Frame", {
     Parent = ScreenGui,
 })
 Library.Overlay = Overlay
+Library.PopupParent = Overlay
 
 local NotifyHolder = New("Frame", {
     Name = "Notifications",
@@ -639,6 +640,9 @@ function Library:ClosePopup()
         if Active.Watch then
             Active.Watch:Disconnect()
         end
+        if Active.Blocker then
+            Active.Blocker:Destroy()
+        end
         pcall(Active.Close)
     end
 end
@@ -646,6 +650,25 @@ end
 function Library:RegisterPopup(Frame, CloseFunc, Opener)
     Library:ClosePopup()
     local Entry = { Frame = Frame, Close = CloseFunc, Opener = Opener, Opened = os.clock() }
+
+    --// An invisible button behind the popup catches any click outside of it.
+    --// (The engine does the hit-testing, so no coordinate maths is involved.)
+    local Blocker = New("TextButton", {
+        BackgroundTransparency = 1,
+        Position = UDim2.fromOffset(-3000, -3000),
+        Size = UDim2.fromOffset(6000, 6000),
+        ZIndex = 9,
+        Parent = Frame.Parent,
+    })
+    local function Dismiss()
+        if Library.ActivePopup == Entry then
+            Library:ClosePopup()
+        end
+    end
+    Blocker.MouseButton1Down:Connect(Dismiss)
+    Blocker.MouseButton2Down:Connect(Dismiss)
+    Entry.Blocker = Blocker
+
     --// close when whatever opened it moves (scrolling, dragging, resizing)
     if Opener then
         Entry.Watch = Opener:GetPropertyChangedSignal("AbsolutePosition"):Connect(function()
@@ -662,54 +685,51 @@ function Library:IsPopupOpenFor(Opener)
 end
 
 --// Place a popup under (or above) an anchor, never on top of it.
---// If neither side has room the popup is shortened (its list scrolls).
+--// Positions are worked out relative to the popup's parent, so any global
+--// offset (GUI inset, container quirks) cancels out. If neither side has
+--// room the popup is shortened and its list scrolls.
 local function PlacePopup(Popup, Anchor, Width, Height, AlignRight)
+    local Parent = Popup.Parent
+    local Scale = 1
+    local ScaleObject = Parent:FindFirstChildOfClass("UIScale")
+    if ScaleObject then
+        Scale = ScaleObject.Scale
+    end
+
     local ViewSize = Overlay.AbsoluteSize
+    local ParentPos = Parent.AbsolutePosition
     local AnchorPos, AnchorSize = Anchor.AbsolutePosition, Anchor.AbsoluteSize
-    local Margin = 8
-    local Gap = 6
+    local Margin, Gap = 8, 6
+    local PxWidth = Width * Scale
+    local PxHeight = Height * Scale
 
     local X = AnchorPos.X
     if AlignRight then
-        X = AnchorPos.X + AnchorSize.X - Width
+        X = AnchorPos.X + AnchorSize.X - PxWidth
     end
-    X = math.clamp(X, Margin, math.max(Margin, ViewSize.X - Width - Margin))
+    X = math.clamp(X, Margin, math.max(Margin, ViewSize.X - PxWidth - Margin))
 
-    local SpaceBelow = ViewSize.Y - (AnchorPos.Y + AnchorSize.Y + Gap) - Margin
-    local SpaceAbove = AnchorPos.Y - Gap - Margin
+    --// conservative vertical bounds (keeps clear of the top bar area)
+    local Bottom = ViewSize.Y - 70
+    local SpaceBelow = Bottom - (AnchorPos.Y + AnchorSize.Y + Gap)
+    local SpaceAbove = AnchorPos.Y - Gap - 10
 
     local Y
-    if Height <= SpaceBelow then
+    if PxHeight <= SpaceBelow then
         Y = AnchorPos.Y + AnchorSize.Y + Gap
-    elseif Height <= SpaceAbove then
-        Y = AnchorPos.Y - Gap - Height
+    elseif PxHeight <= SpaceAbove then
+        Y = AnchorPos.Y - Gap - PxHeight
     elseif SpaceBelow >= SpaceAbove then
-        Height = math.max(60, SpaceBelow)
+        PxHeight = math.max(60 * Scale, SpaceBelow)
         Y = AnchorPos.Y + AnchorSize.Y + Gap
     else
-        Height = math.max(60, SpaceAbove)
-        Y = AnchorPos.Y - Gap - Height
+        PxHeight = math.max(60 * Scale, SpaceAbove)
+        Y = AnchorPos.Y - Gap - PxHeight
     end
 
-    Popup.Position = UDim2.fromOffset(X, Y)
-    Popup.Size = UDim2.fromOffset(Width, Height)
+    Popup.Position = UDim2.fromOffset((X - ParentPos.X) / Scale, (Y - ParentPos.Y) / Scale)
+    Popup.Size = UDim2.fromOffset(Width, PxHeight / Scale)
 end
-
-Library:GiveSignal(UserInputService.InputBegan:Connect(function(Input)
-    local Active = Library.ActivePopup
-    if not Active then
-        return
-    end
-    if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
-        local Mouse = UserInputService:GetMouseLocation()
-        if Input.UserInputType == Enum.UserInputType.Touch then
-            Mouse = Vector2.new(Input.Position.X, Input.Position.Y)
-        end
-        if not IsInside(Active.Frame, Mouse) and not IsInside(Active.Opener, Mouse) then
-            Library:ClosePopup()
-        end
-    end
-end))
 
 --// Tooltip
 local TooltipLabel = New("TextLabel", {
@@ -1210,6 +1230,7 @@ function Library:CreateWindow(Info)
     })
     Corner(MainFrame, 14)
     Stroke(MainFrame)
+    Library.PopupParent = MainFrame
     local PopScale = New("UIScale", { Scale = 1, Parent = MainFrame })
 
     --// Top bar
@@ -2953,7 +2974,7 @@ function Funcs:AddDropdown(Idx, Info)
         Popup = New("Frame", {
             BackgroundColor3 = "MainColor",
             ZIndex = 10,
-            Parent = Overlay,
+            Parent = Library.PopupParent,
         })
         Corner(Popup, 10)
         Stroke(Popup)
@@ -3219,7 +3240,7 @@ function Addons:AddColorPicker(Idx, Info)
         Popup = New("Frame", {
             BackgroundColor3 = "MainColor",
             ZIndex = 10,
-            Parent = Overlay,
+            Parent = Library.PopupParent,
         })
         Corner(Popup, 12)
         Stroke(Popup)
@@ -3581,7 +3602,7 @@ function Addons:AddKeyPicker(Idx, Info)
         ModePopup = New("Frame", {
             BackgroundColor3 = "MainColor",
             ZIndex = 10,
-            Parent = Overlay,
+            Parent = Library.PopupParent,
         })
         Corner(ModePopup, 10)
         Stroke(ModePopup)
