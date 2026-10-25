@@ -95,8 +95,29 @@ local Library = {
     },
 }
 
+--// The scheme is wrapped so that theme managers cannot recolour the accent
+--// (Obsidian's ThemeManager pushes its own purple accent otherwise).
+local SchemeData = Library.Scheme
+Library.LockAccent = true
+Library.FontScale = 1.2
+Library.Scheme = setmetatable({}, {
+    __index = SchemeData,
+    __newindex = function(_, Key, Value)
+        if Key == "AccentColor" and Library.LockAccent then
+            return
+        end
+        SchemeData[Key] = Value
+    end,
+})
 local Scheme = Library.Scheme
 getgenv().VerdantLibrary = Library
+
+function Library:SetAccent(Color)
+    if typeof(Color) == "Color3" then
+        SchemeData.AccentColor = Color
+        Library:UpdateColorsUsingRegistry()
+    end
+end
 
 --// Colour helpers
 local function Lerp(A, B, T)
@@ -128,10 +149,10 @@ local Derived = {
         return Lerp(Scheme.MainColor, Color3.new(1, 1, 1), 0.09)
     end,
     MutedColor = function()
-        return Lerp(Scheme.FontColor, Scheme.BackgroundColor, 0.5)
+        return Lerp(Scheme.FontColor, Scheme.BackgroundColor, 0.36)
     end,
     SubtleColor = function()
-        return Lerp(Scheme.FontColor, Scheme.BackgroundColor, 0.72)
+        return Lerp(Scheme.FontColor, Scheme.BackgroundColor, 0.58)
     end,
     SidebarColor = function()
         return Lerp(Scheme.BackgroundColor, Scheme.MainColor, 0.35)
@@ -202,7 +223,7 @@ local function New(Class, Props)
 
     if TextClasses[Class] then
         Inst.FontFace = Scheme.Font
-        Inst.TextSize = 14
+        Inst.TextSize = math.floor(14 * Library.FontScale + 0.5)
         Inst.RichText = false
         if Props.TextColor3 == nil then
             Inst.TextColor3 = Scheme.FontColor
@@ -226,8 +247,8 @@ local function New(Class, Props)
     elseif Class == "ScrollingFrame" then
         Inst.BackgroundTransparency = 1
         Inst.ScrollBarThickness = 2
-        Inst.ScrollBarImageColor3 = Scheme.AccentColor
-        Reg = { ScrollBarImageColor3 = "AccentColor" }
+        Inst.ScrollBarImageColor3 = Derived.SubtleColor()
+        Reg = { ScrollBarImageColor3 = "SubtleColor" }
         Inst.ScrollingDirection = Enum.ScrollingDirection.Y
         Inst.CanvasSize = UDim2.new()
         Inst.AutomaticCanvasSize = Enum.AutomaticSize.Y
@@ -243,6 +264,8 @@ local function New(Class, Props)
     for Prop, Value in pairs(Props) do
         if Prop == "Parent" then
             Parent = Value
+        elseif Prop == "TextSize" then
+            Inst.TextSize = math.floor(Value * Library.FontScale + 0.5)
         elseif ColorProps[Prop] and (typeof(Value) == "string" or typeof(Value) == "function") then
             local Resolved = Resolve(Value)
             if Resolved ~= nil then
@@ -1113,6 +1136,9 @@ function Library:CreateWindow(Info)
     local FooterHeight = 30
     local MinSize = Vector2.new(580, 380)
 
+    if tonumber(Info.FontScale) then
+        Library.FontScale = math.clamp(tonumber(Info.FontScale), 0.8, 2)
+    end
     if Info.NotifySide then
         Library:SetNotifySide(Info.NotifySide)
     end
@@ -2290,12 +2316,12 @@ function Funcs:AddSlider(Idx, Info)
     MakeSignal(Slider, Info)
     Slider.Value = math.clamp(tonumber(Info.Default) or Slider.Min, Slider.Min, Slider.Max)
 
-    local Holder = MakeHolder(self, 42)
+    local Holder = MakeHolder(self, 46)
     local Entry = RegisterEntry(self, Holder, Slider.Text)
 
     local Label = New("TextLabel", {
         FontFace = Fonts.Medium,
-        Size = UDim2.new(1, -96, 0, 18),
+        Size = UDim2.new(1, -96, 0, 20),
         Text = Slider.Compact and "" or Slider.Text,
         TextSize = 13,
         TextTruncate = Enum.TextTruncate.AtEnd,
@@ -2305,7 +2331,7 @@ function Funcs:AddSlider(Idx, Info)
     local ValueLabel = New("TextLabel", {
         AnchorPoint = Vector2.new(1, 0),
         Position = UDim2.new(1, 0, 0, 0),
-        Size = Slider.Compact and UDim2.new(1, 0, 0, 18) or UDim2.new(0, 96, 0, 18),
+        Size = Slider.Compact and UDim2.new(1, 0, 0, 20) or UDim2.new(0, 96, 0, 20),
         TextColor3 = Slider.Compact and "FontColor" or "MutedColor",
         TextSize = 12,
         TextXAlignment = Slider.Compact and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right,
@@ -2454,14 +2480,14 @@ function Funcs:AddInput(Idx, Info)
     }
     MakeSignal(Input, Info)
 
-    local Holder = MakeHolder(self, HasLabel and 58 or 34)
+    local Holder = MakeHolder(self, HasLabel and 62 or 34)
     local Entry = RegisterEntry(self, Holder, Info.Text or Idx)
 
     local Label = nil
     if HasLabel then
         Label = New("TextLabel", {
             FontFace = Fonts.Medium,
-            Size = UDim2.new(1, 0, 0, 18),
+            Size = UDim2.new(1, 0, 0, 20),
             Text = tostring(Info.Text),
             TextSize = 13,
             TextXAlignment = Enum.TextXAlignment.Left,
@@ -2618,14 +2644,14 @@ function Funcs:AddDropdown(Idx, Info)
         end
     end
 
-    local Holder = MakeHolder(self, HasLabel and 58 or 34)
+    local Holder = MakeHolder(self, HasLabel and 62 or 34)
     local Entry = RegisterEntry(self, Holder, Info.Text or Idx)
 
     local Label = nil
     if HasLabel then
         Label = New("TextLabel", {
             FontFace = Fonts.Medium,
-            Size = UDim2.new(1, 0, 0, 18),
+            Size = UDim2.new(1, 0, 0, 20),
             Text = tostring(Info.Text),
             TextSize = 13,
             TextXAlignment = Enum.TextXAlignment.Left,
