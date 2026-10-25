@@ -95,21 +95,49 @@ local Library = {
     },
 }
 
---// The scheme is wrapped so that theme managers cannot recolour the accent
---// (Obsidian's ThemeManager pushes its own purple accent otherwise).
+--// The scheme is wrapped so a theme manager can both write to it and replace it
+--// (Obsidian's ThemeManager does `Library.Scheme = {...}` in SetDefaultTheme).
 local SchemeData = Library.Scheme
-Library.LockAccent = true
+Library.LockAccent = false -- set to true to stop themes from changing the accent colour
+Library.LockFont = true -- keeps the menu font; set to false to let themes change it
 Library.FontScale = 1.2
-Library.Scheme = setmetatable({}, {
+
+local SchemeProxy = setmetatable({}, {
     __index = SchemeData,
     __newindex = function(_, Key, Value)
         if Key == "AccentColor" and Library.LockAccent then
             return
         end
+        if Key == "Font" and Library.LockFont then
+            return
+        end
         SchemeData[Key] = Value
     end,
 })
-local Scheme = Library.Scheme
+
+Library.Scheme = nil
+setmetatable(Library, {
+    __index = function(_, Key)
+        if Key == "Scheme" then
+            return SchemeProxy
+        end
+        return nil
+    end,
+    __newindex = function(Self, Key, Value)
+        if Key == "Scheme" then
+            if typeof(Value) == "table" and Value ~= SchemeProxy then
+                for K, V in pairs(Value) do
+                    SchemeProxy[K] = V
+                end
+                Library:UpdateColorsUsingRegistry()
+            end
+            return
+        end
+        rawset(Self, Key, Value)
+    end,
+})
+
+local Scheme = SchemeProxy
 getgenv().VerdantLibrary = Library
 
 function Library:SetAccent(Color)
@@ -208,6 +236,9 @@ function Library:UpdateColorsUsingRegistry()
 end
 
 function Library:SetFont(NewFont)
+    if Library.LockFont then
+        return
+    end
     if typeof(NewFont) == "EnumItem" then
         NewFont = Font.fromEnum(NewFont)
     end
@@ -1231,7 +1262,10 @@ function Library:CreateWindow(Info)
     Corner(MainFrame, 14)
     Stroke(MainFrame)
     Library.PopupParent = MainFrame
-    local PopScale = New("UIScale", { Scale = 1, Parent = MainFrame })
+    local PopScale = New("UIScale", { Scale = Library.DPIScale, Parent = MainFrame })
+    Library.ApplyDPI = function()
+        Tween(PopScale, { Scale = Library.DPIScale }, 0.15)
+    end
 
     --// Top bar
     local TopBar = New("Frame", {
@@ -1550,15 +1584,16 @@ function Library:CreateWindow(Info)
             if IsPress(Input) then
                 Resizing = true
                 Origin = Input.Position
-                StartSize = MainFrame.AbsoluteSize
+                StartSize = MainFrame.AbsoluteSize / PopScale.Scale
                 Library:ClosePopup()
             end
         end)
         Library:GiveSignal(UserInputService.InputChanged:Connect(function(Input)
             if Resizing and (Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch) then
-                local Screen = Overlay.AbsoluteSize
-                local NewW = math.clamp(StartSize.X + (Input.Position.X - Origin.X), MinSize.X, math.max(MinSize.X, Screen.X))
-                local NewH = math.clamp(StartSize.Y + (Input.Position.Y - Origin.Y), MinSize.Y, math.max(MinSize.Y, Screen.Y))
+                local Zoom = PopScale.Scale
+                local Screen = Overlay.AbsoluteSize / Zoom
+                local NewW = math.clamp(StartSize.X + (Input.Position.X - Origin.X) / Zoom, MinSize.X, math.max(MinSize.X, Screen.X))
+                local NewH = math.clamp(StartSize.Y + (Input.Position.Y - Origin.Y) / Zoom, MinSize.Y, math.max(MinSize.Y, Screen.Y))
                 MainFrame.Size = UDim2.fromOffset(NewW, NewH)
             end
         end))
@@ -1573,8 +1608,8 @@ function Library:CreateWindow(Info)
     function Window:_SetShown(State)
         MainFrame.Visible = State
         if State then
-            PopScale.Scale = 0.96
-            Tween(PopScale, { Scale = 1 }, 0.2, Enum.EasingStyle.Quad)
+            PopScale.Scale = 0.96 * Library.DPIScale
+            Tween(PopScale, { Scale = Library.DPIScale }, 0.2, Enum.EasingStyle.Quad)
         end
     end
 
@@ -3680,10 +3715,76 @@ function Addons:AddKeyPicker(Idx, Info)
     return Parent
 end
 
---// Small compatibility stubs for scripts written against other libraries
-function Library:SetDPIScale(Scale)
-    Library.DPIScale = tonumber(Scale) or 1
+--// Features that Obsidian-style scripts (Example.lua) expect to exist
+function Library:SetDPIScale(Value)
+    Value = tonumber(Value) or 100
+    if Value > 4 then
+        Value = Value / 100
+    end
+    Library.DPIScale = math.clamp(Value, 0.5, 2)
+    if Library.ApplyDPI then
+        Library.ApplyDPI()
+    end
 end
+
+Library.KeybindFrame = { Visible = false } -- placeholder: there is no keybind list in this UI
+Library.ShowCustomCursor = false
+
+function Library:AddDraggableLabel(Text)
+    local Frame = New("Frame", {
+        Active = true,
+        AutomaticSize = Enum.AutomaticSize.X,
+        BackgroundColor3 = "MainColor",
+        Position = UDim2.fromOffset(20, 20),
+        Size = UDim2.fromOffset(0, 30),
+        Parent = ScreenGui,
+    })
+    Corner(Frame, 9)
+    Stroke(Frame)
+    Pad(Frame, 0, 12, 0, 12)
+    local Label = New("TextLabel", {
+        AutomaticSize = Enum.AutomaticSize.X,
+        Size = UDim2.fromOffset(0, 30),
+        Text = tostring(Text),
+        TextSize = 13,
+        Parent = Frame,
+    })
+
+    local Dragging, Origin, Start = false, nil, nil
+    Frame.InputBegan:Connect(function(Input)
+        if IsPress(Input) then
+            Dragging = true
+            Origin = Input.Position
+            Start = Frame.Position
+        end
+    end)
+    Library:GiveSignal(UserInputService.InputChanged:Connect(function(Input)
+        if Dragging and (Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch) then
+            Frame.Position = UDim2.new(
+                Start.X.Scale, Start.X.Offset + (Input.Position.X - Origin.X),
+                Start.Y.Scale, Start.Y.Offset + (Input.Position.Y - Origin.Y)
+            )
+        end
+    end))
+    Library:GiveSignal(UserInputService.InputEnded:Connect(function(Input)
+        if IsPress(Input) then
+            Dragging = false
+        end
+    end))
+
+    local Object = { Frame = Frame }
+    function Object:SetText(NewText)
+        Label.Text = tostring(NewText)
+    end
+    function Object:SetVisible(State)
+        Frame.Visible = State == true
+    end
+    function Object:Destroy()
+        Frame:Destroy()
+    end
+    return Object
+end
+
 function Library:UpdateDependencyBoxes() end
 function Library:SetWatermark() end
 function Library:SetWatermarkVisibility() end
