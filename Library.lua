@@ -243,8 +243,8 @@ function Library:UpdateColorsUsingRegistry()
     for _, Inst in ipairs(Dead) do
         Library.Registry[Inst] = nil
     end
-    if Library.Crosshair then
-        Library.Crosshair:Update()
+    if Library.Cursor then
+        Library.Cursor:Update()
     end
 end
 
@@ -1640,8 +1640,8 @@ function Library:CreateWindow(Info)
             Library:ClosePopup()
             TooltipLabel.Visible = false
         end
-        if Library.Crosshair then
-            Library.Crosshair:Update()
+        if Library.Cursor then
+            Library.Cursor:Update()
         end
     end
 
@@ -1886,10 +1886,10 @@ function Library:CreateWindow(Info)
             Window:SelectTab(Tab)
         end
 
-        --// crosshair settings go into the "Visuals" tab automatically
-        if Info.CrosshairMenu ~= false and not Library.CrosshairMenuBuilt and string.lower(Name) == "visuals" then
-            Library.CrosshairMenuBuilt = true
-            Library.Crosshair:BuildMenu(Tab:AddRightGroupbox("Crosshair", "crosshair"))
+        --// cursor settings go into the "UI Settings" tab automatically
+        if Info.CursorMenu ~= false and not Library.CursorMenuBuilt and string.lower(Name) == "ui settings" then
+            Library.CursorMenuBuilt = true
+            Library.Cursor:BuildMenu(Tab:AddRightGroupbox("Cursor", "mouse-pointer-2"))
         end
         return Tab
     end
@@ -1939,16 +1939,16 @@ function Library:CreateWindow(Info)
     end
 
     Library.Window = Window
-    if Info.Crosshair == false and Library.Crosshair then
-        Library.Crosshair.Enabled = false
+    if Info.CustomCursor == false and Library.Cursor then
+        Library.Cursor.Enabled = false
     end
     Library.Toggled = Info.AutoShow ~= false
     Window:_SetShown(Library.Toggled)
     pcall(function()
         ModalElement.Modal = Library.Toggled and Library.UnlockMouse
     end)
-    if Library.Crosshair then
-        Library.Crosshair:Update()
+    if Library.Cursor then
+        Library.Cursor:Update()
     end
 
     return Window
@@ -1962,7 +1962,8 @@ local function PointerPos(Input)
     if Input.UserInputType == Enum.UserInputType.Touch then
         return Vector2.new(Input.Position.X, Input.Position.Y)
     end
-    return UserInputService:GetMouseLocation()
+    --// the mouse position is converted into the same space as AbsolutePosition
+    return UserInputService:GetMouseLocation() + Overlay.AbsolutePosition
 end
 
 local function MakeDrag(Area, OnMove)
@@ -3820,293 +3821,264 @@ function Library:SetCursorVisible() end
 
 
 --// ============================================================
---//  CROSSHAIR  (on by default, drawn at the centre of the screen)
+--//  CUSTOM CURSOR  (replaces the mouse pointer while the menu is open)
 --// ============================================================
 
-local Crosshair = {
+local Cursor = {
     Enabled = true,
-    Lines = true,
-    Dot = true,
-    Circle = false,
-    Length = 9,
-    Gap = 5,
+    Style = "Dot + Ring", -- "Dot + Ring", "Dot", "Ring", "Plus"
+    Size = 6,
+    RingSize = 24,
     Thickness = 2,
-    DotSize = 3,
-    CircleSize = 28,
     Outline = true,
     FollowAccent = true,
     Color = Color3.fromRGB(255, 255, 255),
     Transparency = 0,
-    Rotation = 0,
-    Spin = false,
-    SpinSpeed = 120,
-    HideWhenMenuOpen = true,
-    SpinAngle = 0,
+    ShowAlways = false, -- also replace the pointer when the menu is closed
+    Offset = Vector2.new(0, 0), -- nudge if the cursor ever looks shifted
+    _Taken = false,
+    _Original = true,
 }
-Library.Crosshair = Crosshair
+Library.Cursor = Cursor
 
-local CrosshairRoot = New("Frame", {
-    Name = "Crosshair",
+local CursorRoot = New("Frame", {
+    Name = "Cursor",
     AnchorPoint = Vector2.new(0.5, 0.5),
     BackgroundTransparency = 1,
-    Position = UDim2.fromScale(0.5, 0.5),
+    Position = UDim2.fromOffset(-100, -100),
     Size = UDim2.fromOffset(0, 0),
-    ZIndex = 5,
+    Visible = false,
+    ZIndex = 1000,
     Parent = ScreenGui,
 })
+local CursorScale = New("UIScale", { Scale = 1, Parent = CursorRoot })
 
-local function CrosshairPart(Name, IsRing)
+local function CursorPart(Name, Rounded)
     local Part = New("Frame", {
         Name = Name,
+        AnchorPoint = Vector2.new(0.5, 0.5),
         BackgroundColor3 = Color3.new(1, 1, 1),
-        BackgroundTransparency = IsRing and 1 or 0,
-        Parent = CrosshairRoot,
+        Position = UDim2.fromOffset(0, 0),
+        Parent = CursorRoot,
     })
+    if Rounded then
+        Round(Part)
+    end
     local Edge = New("UIStroke", {
         Color = Color3.new(0, 0, 0),
         Thickness = 1,
         ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-        Enabled = not IsRing,
         Parent = Part,
     })
     return Part, Edge
 end
 
---// the black outline of the ring is a slightly thicker black ring drawn underneath
-local RingBack, RingBackStroke = CrosshairPart("RingBack", true)
-RingBackStroke.Enabled = true
-Round(RingBack)
-local Ring, RingStroke = CrosshairPart("Ring", true)
-RingStroke.Color = Color3.new(1, 1, 1)
-Round(Ring)
-local Top, TopEdge = CrosshairPart("Top")
-local Bottom, BottomEdge = CrosshairPart("Bottom")
-local Left, LeftEdge = CrosshairPart("Left")
-local Right, RightEdge = CrosshairPart("Right")
-local Dot, DotEdge = CrosshairPart("Dot")
+--// ring = a thick black ring drawn under a thinner coloured ring
+local RingBack, RingBackStroke = CursorPart("RingBack", true)
+RingBack.BackgroundTransparency = 1
+local Ring, RingStroke = CursorPart("Ring", true)
+Ring.BackgroundTransparency = 1
+local PlusH, PlusHEdge = CursorPart("PlusH", false)
+local PlusV, PlusVEdge = CursorPart("PlusV", false)
+local CursorDot, CursorDotEdge = CursorPart("Dot", true)
 
-function Crosshair:GetColor()
-    if Crosshair.FollowAccent then
+function Cursor:GetColor()
+    if Cursor.FollowAccent then
         return Scheme.AccentColor
     end
-    return Crosshair.Color
+    return Cursor.Color
 end
 
-function Crosshair:Update()
-    local Color = Crosshair:GetColor()
-    local Length, Gap, Thick = Crosshair.Length, Crosshair.Gap, Crosshair.Thickness
-    local Alpha = Crosshair.Transparency
-    local Hidden = Crosshair.HideWhenMenuOpen and Library.Window ~= nil and Library.Toggled
+function Cursor:IsActive()
+    if not Cursor.Enabled or Library.Unloaded then
+        return false
+    end
+    return Cursor.ShowAlways or (Library.Window ~= nil and Library.Toggled)
+end
 
-    CrosshairRoot.Visible = Crosshair.Enabled and not Hidden
-    CrosshairRoot.Rotation = Crosshair.Rotation + Crosshair.SpinAngle
+function Cursor:Update()
+    local Color = Cursor:GetColor()
+    local Alpha = Cursor.Transparency
+    local Style = Cursor.Style
+    local Thick = Cursor.Thickness
+    local Active = Cursor:IsActive()
 
-    Top.AnchorPoint = Vector2.new(0.5, 1)
-    Top.Position = UDim2.fromOffset(0, -Gap)
-    Top.Size = UDim2.fromOffset(Thick, Length)
-    Bottom.AnchorPoint = Vector2.new(0.5, 0)
-    Bottom.Position = UDim2.fromOffset(0, Gap)
-    Bottom.Size = UDim2.fromOffset(Thick, Length)
-    Left.AnchorPoint = Vector2.new(1, 0.5)
-    Left.Position = UDim2.fromOffset(-Gap, 0)
-    Left.Size = UDim2.fromOffset(Length, Thick)
-    Right.AnchorPoint = Vector2.new(0, 0.5)
-    Right.Position = UDim2.fromOffset(Gap, 0)
-    Right.Size = UDim2.fromOffset(Length, Thick)
+    CursorRoot.Visible = Active
 
-    local Arms = { { Top, TopEdge }, { Bottom, BottomEdge }, { Left, LeftEdge }, { Right, RightEdge } }
-    for _, Arm in ipairs(Arms) do
-        Arm[1].Visible = Crosshair.Lines
-        Arm[1].BackgroundColor3 = Color
-        Arm[1].BackgroundTransparency = Alpha
-        Arm[2].Enabled = Crosshair.Outline
-        Arm[2].Transparency = Alpha
+    --// take over / give back the real pointer
+    if Active then
+        if not Cursor._Taken then
+            Cursor._Original = UserInputService.MouseIconEnabled
+            Cursor._Taken = true
+        end
+        UserInputService.MouseIconEnabled = false
+    elseif Cursor._Taken then
+        Cursor._Taken = false
+        UserInputService.MouseIconEnabled = Cursor._Original
     end
 
-    Dot.AnchorPoint = Vector2.new(0.5, 0.5)
-    Dot.Position = UDim2.fromOffset(0, 0)
-    Dot.Size = UDim2.fromOffset(Crosshair.DotSize, Crosshair.DotSize)
-    Dot.Visible = Crosshair.Dot
-    Dot.BackgroundColor3 = Color
-    Dot.BackgroundTransparency = Alpha
-    DotEdge.Enabled = Crosshair.Outline
-    DotEdge.Transparency = Alpha
+    local ShowDot = Style == "Dot + Ring" or Style == "Dot"
+    local ShowRing = Style == "Dot + Ring" or Style == "Ring"
+    local ShowPlus = Style == "Plus"
+
+    CursorDot.Size = UDim2.fromOffset(Cursor.Size, Cursor.Size)
+    CursorDot.Visible = ShowDot
+    CursorDot.BackgroundColor3 = Color
+    CursorDot.BackgroundTransparency = Alpha
+    CursorDotEdge.Enabled = Cursor.Outline
+    CursorDotEdge.Transparency = Alpha
 
     for _, RingFrame in ipairs({ Ring, RingBack }) do
-        RingFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-        RingFrame.Position = UDim2.fromOffset(0, 0)
-        RingFrame.Size = UDim2.fromOffset(Crosshair.CircleSize, Crosshair.CircleSize)
-        RingFrame.Visible = Crosshair.Circle
+        RingFrame.Size = UDim2.fromOffset(Cursor.RingSize, Cursor.RingSize)
+        RingFrame.Visible = ShowRing
     end
     RingStroke.Color = Color
     RingStroke.Thickness = Thick
     RingStroke.Transparency = Alpha
     RingBackStroke.Thickness = Thick + 2
-    RingBackStroke.Enabled = Crosshair.Outline
+    RingBackStroke.Enabled = Cursor.Outline
     RingBackStroke.Transparency = Alpha
+
+    local Arm = Cursor.RingSize
+    PlusH.Size = UDim2.fromOffset(Arm, Thick)
+    PlusV.Size = UDim2.fromOffset(Thick, Arm)
+    for _, Bar in ipairs({ { PlusH, PlusHEdge }, { PlusV, PlusVEdge } }) do
+        Bar[1].Visible = ShowPlus
+        Bar[1].BackgroundColor3 = Color
+        Bar[1].BackgroundTransparency = Alpha
+        Bar[2].Enabled = Cursor.Outline
+        Bar[2].Transparency = Alpha
+    end
 end
 
-function Crosshair:SetEnabled(State)
-    Crosshair.Enabled = State == true
-    Crosshair:Update()
-end
-
---// Library:SetCrosshair({ Length = 12, Gap = 3, Circle = true, Color = Color3.new(1, 0, 0), FollowAccent = false })
-function Library:SetCrosshair(Settings)
+function Library:SetCursor(Settings)
     if typeof(Settings) == "table" then
         for Key, Value in pairs(Settings) do
-            Crosshair[Key] = Value
+            Cursor[Key] = Value
         end
     end
-    Crosshair:Update()
+    Cursor:Update()
 end
 
-Library:GiveSignal(RunService.RenderStepped:Connect(function(Delta)
-    if Crosshair.Spin and Crosshair.Enabled then
-        Crosshair.SpinAngle = (Crosshair.SpinAngle + Crosshair.SpinSpeed * Delta) % 360
-        CrosshairRoot.Rotation = Crosshair.Rotation + Crosshair.SpinAngle
+--// follows the real pointer every frame
+Library:GiveSignal(RunService.RenderStepped:Connect(function()
+    if Cursor:IsActive() then
+        local Mouse = UserInputService:GetMouseLocation()
+        CursorRoot.Position = UDim2.fromOffset(Mouse.X + Cursor.Offset.X, Mouse.Y + Cursor.Offset.Y)
+        if UserInputService.MouseIconEnabled then
+            UserInputService.MouseIconEnabled = false -- some games turn it back on
+        end
     end
 end))
 
---// Settings box for the crosshair (added to the "Visuals" tab automatically)
-function Crosshair:BuildMenu(Groupbox)
-    Groupbox:AddToggle("Crosshair_Enabled", {
-        Text = "Custom crosshair",
-        Default = Crosshair.Enabled,
+--// little squeeze when clicking
+Library:GiveSignal(UserInputService.InputBegan:Connect(function(Input)
+    if Input.UserInputType == Enum.UserInputType.MouseButton1 and CursorRoot.Visible then
+        Tween(CursorScale, { Scale = 0.78 }, 0.08)
+    end
+end))
+Library:GiveSignal(UserInputService.InputEnded:Connect(function(Input)
+    if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+        Tween(CursorScale, { Scale = 1 }, 0.14, Enum.EasingStyle.Back)
+    end
+end))
+
+Library:OnUnload(function()
+    Cursor.Enabled = false
+    if Cursor._Taken then
+        Cursor._Taken = false
+        UserInputService.MouseIconEnabled = Cursor._Original
+    end
+end)
+
+--// settings box (added to the "UI Settings" tab automatically)
+function Cursor:BuildMenu(Groupbox)
+    Groupbox:AddToggle("Cursor_Enabled", {
+        Text = "Custom cursor",
+        Default = Cursor.Enabled,
         Callback = function(Value)
-            Crosshair.Enabled = Value
-            Crosshair:Update()
+            Cursor.Enabled = Value
+            Cursor:Update()
         end,
     })
-    Groupbox:AddToggle("Crosshair_Lines", {
-        Text = "Lines",
-        Default = Crosshair.Lines,
+    Groupbox:AddDropdown("Cursor_Style", {
+        Text = "Style",
+        Values = { "Dot + Ring", "Dot", "Ring", "Plus" },
+        Default = Cursor.Style,
         Callback = function(Value)
-            Crosshair.Lines = Value
-            Crosshair:Update()
+            if Value then
+                Cursor.Style = Value
+                Cursor:Update()
+            end
         end,
     })
-    Groupbox:AddToggle("Crosshair_Dot", {
-        Text = "Center dot",
-        Default = Crosshair.Dot,
+    Groupbox:AddSlider("Cursor_Size", {
+        Text = "Dot size", Default = Cursor.Size, Min = 2, Max = 16, Rounding = 0,
         Callback = function(Value)
-            Crosshair.Dot = Value
-            Crosshair:Update()
+            Cursor.Size = Value
+            Cursor:Update()
         end,
     })
-    Groupbox:AddToggle("Crosshair_Circle", {
-        Text = "Circle",
-        Default = Crosshair.Circle,
+    Groupbox:AddSlider("Cursor_RingSize", {
+        Text = "Ring / plus size", Default = Cursor.RingSize, Min = 10, Max = 60, Rounding = 0,
         Callback = function(Value)
-            Crosshair.Circle = Value
-            Crosshair:Update()
+            Cursor.RingSize = Value
+            Cursor:Update()
         end,
     })
-    Groupbox:AddToggle("Crosshair_Outline", {
+    Groupbox:AddSlider("Cursor_Thickness", {
+        Text = "Thickness", Default = Cursor.Thickness, Min = 1, Max = 6, Rounding = 0,
+        Callback = function(Value)
+            Cursor.Thickness = Value
+            Cursor:Update()
+        end,
+    })
+    Groupbox:AddSlider("Cursor_Opacity", {
+        Text = "Opacity", Default = 100, Min = 20, Max = 100, Rounding = 0, Suffix = "%",
+        Callback = function(Value)
+            Cursor.Transparency = 1 - Value / 100
+            Cursor:Update()
+        end,
+    })
+    Groupbox:AddToggle("Cursor_Outline", {
         Text = "Outline",
-        Default = Crosshair.Outline,
+        Default = Cursor.Outline,
         Callback = function(Value)
-            Crosshair.Outline = Value
-            Crosshair:Update()
+            Cursor.Outline = Value
+            Cursor:Update()
         end,
     })
-    Groupbox:AddToggle("Crosshair_FollowAccent", {
+    Groupbox:AddToggle("Cursor_FollowAccent", {
         Text = "Use accent color",
-        Default = Crosshair.FollowAccent,
+        Default = Cursor.FollowAccent,
         Callback = function(Value)
-            Crosshair.FollowAccent = Value
-            Crosshair:Update()
+            Cursor.FollowAccent = Value
+            Cursor:Update()
         end,
     })
-    Groupbox:AddLabel("Custom color"):AddColorPicker("Crosshair_Color", {
-        Default = Crosshair.Color,
-        Title = "Crosshair color",
+    Groupbox:AddLabel("Custom color"):AddColorPicker("Cursor_Color", {
+        Default = Cursor.Color,
+        Title = "Cursor color",
         Callback = function(Value)
-            Crosshair.Color = Value
-            if Library.Toggles.Crosshair_FollowAccent and Library.Toggles.Crosshair_FollowAccent.Value then
-                Library.Toggles.Crosshair_FollowAccent:SetValue(false)
+            Cursor.Color = Value
+            local Follow = Library.Toggles.Cursor_FollowAccent
+            if Follow and Follow.Value then
+                Follow:SetValue(false)
             else
-                Crosshair:Update()
+                Cursor:Update()
             end
         end,
     })
-    Groupbox:AddDivider()
-    Groupbox:AddSlider("Crosshair_Length", {
-        Text = "Line length", Default = Crosshair.Length, Min = 1, Max = 40, Rounding = 0,
+    Groupbox:AddToggle("Cursor_ShowAlways", {
+        Text = "Also show when menu is closed",
+        Default = Cursor.ShowAlways,
         Callback = function(Value)
-            Crosshair.Length = Value
-            Crosshair:Update()
-        end,
-    })
-    Groupbox:AddSlider("Crosshair_Gap", {
-        Text = "Gap", Default = Crosshair.Gap, Min = 0, Max = 30, Rounding = 0,
-        Callback = function(Value)
-            Crosshair.Gap = Value
-            Crosshair:Update()
-        end,
-    })
-    Groupbox:AddSlider("Crosshair_Thickness", {
-        Text = "Thickness", Default = Crosshair.Thickness, Min = 1, Max = 8, Rounding = 0,
-        Callback = function(Value)
-            Crosshair.Thickness = Value
-            Crosshair:Update()
-        end,
-    })
-    Groupbox:AddSlider("Crosshair_DotSize", {
-        Text = "Dot size", Default = Crosshair.DotSize, Min = 1, Max = 12, Rounding = 0,
-        Callback = function(Value)
-            Crosshair.DotSize = Value
-            Crosshair:Update()
-        end,
-    })
-    Groupbox:AddSlider("Crosshair_CircleSize", {
-        Text = "Circle size", Default = Crosshair.CircleSize, Min = 8, Max = 120, Rounding = 0,
-        Callback = function(Value)
-            Crosshair.CircleSize = Value
-            Crosshair:Update()
-        end,
-    })
-    Groupbox:AddSlider("Crosshair_Opacity", {
-        Text = "Opacity", Default = 100, Min = 10, Max = 100, Rounding = 0, Suffix = "%",
-        Callback = function(Value)
-            Crosshair.Transparency = 1 - Value / 100
-            Crosshair:Update()
-        end,
-    })
-    Groupbox:AddSlider("Crosshair_Rotation", {
-        Text = "Rotation", Default = Crosshair.Rotation, Min = 0, Max = 360, Rounding = 0,
-        Callback = function(Value)
-            Crosshair.Rotation = Value
-            Crosshair:Update()
-        end,
-    })
-    Groupbox:AddToggle("Crosshair_Spin", {
-        Text = "Spin",
-        Default = Crosshair.Spin,
-        Callback = function(Value)
-            Crosshair.Spin = Value
-            if not Value then
-                Crosshair.SpinAngle = 0
-            end
-            Crosshair:Update()
-        end,
-    })
-    Groupbox:AddSlider("Crosshair_SpinSpeed", {
-        Text = "Spin speed", Default = Crosshair.SpinSpeed, Min = 10, Max = 720, Rounding = 0,
-        Callback = function(Value)
-            Crosshair.SpinSpeed = Value
-        end,
-    })
-    Groupbox:AddToggle("Crosshair_HideInMenu", {
-        Text = "Hide while menu is open",
-        Default = Crosshair.HideWhenMenuOpen,
-        Callback = function(Value)
-            Crosshair.HideWhenMenuOpen = Value
-            Crosshair:Update()
+            Cursor.ShowAlways = Value
+            Cursor:Update()
         end,
     })
 end
 
-Crosshair:Update()
+Cursor:Update()
 
 return Library
