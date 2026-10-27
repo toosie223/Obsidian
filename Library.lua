@@ -3840,7 +3840,7 @@ function Library:SetCursorVisible() end
 local Cursor = {
     Enabled = true,
     Style = "Windows", -- "Windows", "Dot + Ring", "Dot", "Ring", "Plus"
-    ArrowSize = 2, -- size of the Windows arrow (1 = real Windows size)
+    ArrowSize = 1, -- size of the Windows arrow (1 = real Windows size)
     Size = 6,
     RingSize = 24,
     Thickness = 2,
@@ -3927,7 +3927,7 @@ local ArrowHolder = New("Frame", {
     Visible = false,
     Parent = CursorRoot,
 })
-local ArrowScale = New("UIScale", { Scale = 2, Parent = ArrowHolder })
+local ArrowScale = New("UIScale", { Scale = 1, Parent = ArrowHolder })
 local ArrowFill, ArrowEdge = {}, {}
 for RowIndex, Row in ipairs(ArrowMap) do
     local Col = 1
