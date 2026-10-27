@@ -121,9 +121,21 @@ setmetatable(Library, {
         if Key == "Scheme" then
             return SchemeProxy
         end
+        if Key == "ShowCustomCursor" then
+            local Cur = rawget(Library, "Cursor")
+            return Cur ~= nil and Cur.Enabled
+        end
         return nil
     end,
     __newindex = function(Self, Key, Value)
+        if Key == "ShowCustomCursor" then
+            local Cur = rawget(Self, "Cursor")
+            if Cur then
+                Cur.Enabled = Value == true
+                Cur:Update()
+            end
+            return
+        end
         if Key == "Scheme" then
             if typeof(Value) == "table" and Value ~= SchemeProxy then
                 for K, V in pairs(Value) do
@@ -1889,7 +1901,9 @@ function Library:CreateWindow(Info)
         --// cursor settings go into the "UI Settings" tab automatically
         if Info.CursorMenu ~= false and not Library.CursorMenuBuilt and string.lower(Name) == "ui settings" then
             Library.CursorMenuBuilt = true
-            Library.Cursor:BuildMenu(Tab:AddRightGroupbox("Cursor", "mouse-pointer-2"))
+            local CursorBox = Tab:AddRightGroupbox("Cursor", "mouse-pointer-2")
+            CursorBox.Holder.LayoutOrder = 100000 -- always last, so it sits below "Configuration"
+            Library.Cursor:BuildMenu(CursorBox)
         end
         return Tab
     end
@@ -3757,7 +3771,6 @@ function Library:SetDPIScale(Value)
 end
 
 Library.KeybindFrame = { Visible = false } -- placeholder: there is no keybind list in this UI
-Library.ShowCustomCursor = false
 
 function Library:AddDraggableLabel(Text)
     local Frame = New("Frame", {
@@ -3826,12 +3839,13 @@ function Library:SetCursorVisible() end
 
 local Cursor = {
     Enabled = true,
-    Style = "Dot + Ring", -- "Dot + Ring", "Dot", "Ring", "Plus"
+    Style = "Windows", -- "Windows", "Dot + Ring", "Dot", "Ring", "Plus"
+    ArrowSize = 2, -- size of the Windows arrow (1 = real Windows size)
     Size = 6,
     RingSize = 24,
     Thickness = 2,
     Outline = true,
-    FollowAccent = true,
+    FollowAccent = false, -- white like Windows; turn on to tint it with the accent
     Color = Color3.fromRGB(255, 255, 255),
     Transparency = 0,
     ShowAlways = false, -- also replace the pointer when the menu is closed
@@ -3882,6 +3896,60 @@ local PlusH, PlusHEdge = CursorPart("PlusH", false)
 local PlusV, PlusVEdge = CursorPart("PlusV", false)
 local CursorDot, CursorDotEdge = CursorPart("Dot", true)
 
+--// The classic Windows arrow, drawn pixel by pixel (X = outline, O = fill).
+--// The tip (top-left pixel) sits exactly on the pointer position.
+local ArrowMap = {
+    "X...........",
+    "XX..........",
+    "XOX.........",
+    "XOOX........",
+    "XOOOX.......",
+    "XOOOOX......",
+    "XOOOOOX.....",
+    "XOOOOOOX....",
+    "XOOOOOOOX...",
+    "XOOOOOOOOX..",
+    "XOOOOOOOOOX.",
+    "XOOOOOXXXXXX",
+    "XOOXOOX.....",
+    "XOX.XOOX....",
+    "XX..XOOX....",
+    "X....XOOX...",
+    ".....XOOX...",
+    "......XOOX..",
+    "......XXX...",
+}
+local ArrowHolder = New("Frame", {
+    Name = "Arrow",
+    BackgroundTransparency = 1,
+    Position = UDim2.fromOffset(0, 0),
+    Size = UDim2.fromOffset(0, 0),
+    Visible = false,
+    Parent = CursorRoot,
+})
+local ArrowScale = New("UIScale", { Scale = 2, Parent = ArrowHolder })
+local ArrowFill, ArrowEdge = {}, {}
+for RowIndex, Row in ipairs(ArrowMap) do
+    local Col = 1
+    while Col <= #Row do
+        local Char = string.sub(Row, Col, Col)
+        local Start = Col
+        while Col < #Row and string.sub(Row, Col + 1, Col + 1) == Char do
+            Col = Col + 1
+        end
+        if Char ~= "." then
+            local Run = New("Frame", {
+                BackgroundColor3 = Char == "X" and Color3.new(0, 0, 0) or Color3.new(1, 1, 1),
+                Position = UDim2.fromOffset(Start - 1, RowIndex - 1),
+                Size = UDim2.fromOffset(Col - Start + 1, 1),
+                Parent = ArrowHolder,
+            })
+            table.insert(Char == "X" and ArrowEdge or ArrowFill, Run)
+        end
+        Col = Col + 1
+    end
+end
+
 function Cursor:GetColor()
     if Cursor.FollowAccent then
         return Scheme.AccentColor
@@ -3915,6 +3983,18 @@ function Cursor:Update()
     elseif Cursor._Taken then
         Cursor._Taken = false
         UserInputService.MouseIconEnabled = Cursor._Original
+    end
+
+    --// Windows arrow
+    ArrowHolder.Visible = Style == "Windows"
+    ArrowScale.Scale = math.max(0.5, Cursor.ArrowSize)
+    for _, Run in ipairs(ArrowFill) do
+        Run.BackgroundColor3 = Color
+        Run.BackgroundTransparency = Alpha
+    end
+    for _, Run in ipairs(ArrowEdge) do
+        Run.Visible = Cursor.Outline
+        Run.BackgroundTransparency = Alpha
     end
 
     local ShowDot = Style == "Dot + Ring" or Style == "Dot"
@@ -3993,23 +4073,22 @@ end)
 
 --// settings box (added to the "UI Settings" tab automatically)
 function Cursor:BuildMenu(Groupbox)
-    Groupbox:AddToggle("Cursor_Enabled", {
-        Text = "Custom cursor",
-        Default = Cursor.Enabled,
-        Callback = function(Value)
-            Cursor.Enabled = Value
-            Cursor:Update()
-        end,
-    })
     Groupbox:AddDropdown("Cursor_Style", {
         Text = "Style",
-        Values = { "Dot + Ring", "Dot", "Ring", "Plus" },
+        Values = { "Windows", "Dot + Ring", "Dot", "Ring", "Plus" },
         Default = Cursor.Style,
         Callback = function(Value)
             if Value then
                 Cursor.Style = Value
                 Cursor:Update()
             end
+        end,
+    })
+    Groupbox:AddSlider("Cursor_ArrowSize", {
+        Text = "Arrow size", Default = Cursor.ArrowSize, Min = 1, Max = 5, Rounding = 0,
+        Callback = function(Value)
+            Cursor.ArrowSize = Value
+            Cursor:Update()
         end,
     })
     Groupbox:AddSlider("Cursor_Size", {
