@@ -398,16 +398,48 @@ local function ListLayout(Parent, Padding, Direction)
     })
 end
 
---// A soft vertical wash that makes flat panels read as raised surfaces.
---// Colours may be functions, so the wash follows theme changes automatically.
-local function Gradient(Parent, TopColor, BottomColor, Rotation)
-    local function ResolvePair()
-        local Top = typeof(TopColor) == "function" and TopColor() or TopColor
-        local Bottom = typeof(BottomColor) == "function" and BottomColor() or BottomColor
-        return ColorSequence.new(Top or Color3.new(1, 1, 1), Bottom or Color3.new(0, 0, 0))
+--// Turn anything colour-ish into a real Color3.
+--// Accepts Color3s, scheme keys ("MainColor"), derived names ("CardTopColor"),
+--// functions and garbage; it never returns nil and never raises, which keeps
+--// ColorSequence.new from ever seeing a string.
+local function ToColor3(Value, Fallback)
+    local ValueType = typeof(Value)
+    if ValueType == "Color3" then
+        return Value
     end
+    if ValueType == "function" then
+        local Ok, Result = pcall(Value)
+        if Ok then
+            return ToColor3(Result, Fallback)
+        end
+    elseif ValueType == "string" then
+        local Ok, Resolved = pcall(Resolve, Value)
+        if Ok and typeof(Resolved) == "Color3" then
+            return Resolved
+        end
+    end
+    return Fallback or Color3.new(1, 1, 1)
+end
+
+--// A soft vertical wash that makes flat panels read as raised surfaces.
+--// Accepts scheme keys, derived colour names, functions or raw Color3s, so the
+--// wash can follow theme changes without every caller resolving by hand.
+local function Gradient(Parent, TopColor, BottomColor, Rotation)
+    local Top = ToColor3(TopColor, Color3.new(1, 1, 1))
+    local Bottom = ToColor3(BottomColor, Color3.new(0, 0, 0))
+
+    --// Building the wash must never raise: a bad colour here would abort the
+    --// whole script on load, so fall back until something valid sticks.
+    local Ok, Sequence = pcall(ColorSequence.new, Top, Bottom)
+    if not Ok or Sequence == nil then
+        Ok, Sequence = pcall(ColorSequence.new, Top)
+    end
+    if not Ok or Sequence == nil then
+        Sequence = ColorSequence.new(Color3.new(1, 1, 1))
+    end
+
     return New("UIGradient", {
-        Color = ResolvePair,
+        Color = Sequence,
         Rotation = Rotation or 90,
         Parent = Parent,
     })
